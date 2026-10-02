@@ -4,6 +4,7 @@ export type CanonicalEvent =
   | { type: "run.end"; reason: string }
   | { type: "block.start"; id: string; messageId: string; kind: "text" | "reasoning" }
   | { type: "block.delta"; id: string; text: string }
+  | { type: "block.metadata"; id: string; namespace: string; value: Record<string, unknown> }
   | { type: "block.end"; id: string }
   | { type: "tool.start"; id: string; name: string; messageId: string }
   | { type: "tool.delta"; id: string; text: string }
