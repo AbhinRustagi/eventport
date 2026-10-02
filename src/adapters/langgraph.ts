@@ -4,73 +4,189 @@ import { Lifecycle, object, unsupported } from "../internal.js";
 export interface LangGraphMessage {
   id?: string;
   type?: string;
-  content: string | Array<{ type: string; text?: string; thinking?: string; [field: string]: unknown }>;
-  tool_call_chunks?: Array<{ index?: number; id?: string; name?: string; args?: string }>;
+  content:
+    | string
+    | Array<{
+        type: string;
+        text?: string;
+        thinking?: string;
+        [field: string]: unknown;
+      }>;
+  tool_call_chunks?: Array<{
+    index?: number;
+    id?: string;
+    name?: string;
+    args?: string;
+  }>;
   tool_calls?: Array<{ id: string; name: string; args: unknown }>;
   tool_call_id?: string;
   status?: string;
 }
 export type LangGraphEvent =
-  | { event: "messages" | "messages-tuple"; data: [LangGraphMessage, Record<string, unknown>] }
+  | {
+      event: "messages" | "messages-tuple";
+      data: [LangGraphMessage, Record<string, unknown>];
+    }
   | { event: "values"; data: Record<string, unknown> }
   | { event: "custom"; data: unknown }
   | { event: "metadata"; data: Record<string, unknown> }
   | { event: "error"; data: { message?: string; error?: string } };
-export type LangGraphTuple = { [K in LangGraphEvent["event"]]: [K, Extract<LangGraphEvent, { event: K }> extends never ? [LangGraphMessage, Record<string, unknown>] : Extract<LangGraphEvent, { event: K }>["data"]] }[LangGraphEvent["event"]];
+export type LangGraphTuple = {
+  [K in LangGraphEvent["event"]]: [
+    K,
+    Extract<LangGraphEvent, { event: K }> extends never
+      ? [LangGraphMessage, Record<string, unknown>]
+      : Extract<LangGraphEvent, { event: K }>["data"],
+  ];
+}[LangGraphEvent["event"]];
 
-export function langGraph(options?: { input?: "events" }): SourceAdapter<LangGraphEvent>;
-export function langGraph(options: { input: "tuples" }): SourceAdapter<LangGraphTuple>;
-export function langGraph(options: { input?: "events" | "tuples" } = {}): SourceAdapter<LangGraphEvent | LangGraphTuple> {
+export function langGraph(options?: {
+  input?: "events";
+}): SourceAdapter<LangGraphEvent>;
+export function langGraph(options: {
+  input: "tuples";
+}): SourceAdapter<LangGraphTuple>;
+export function langGraph(
+  options: { input?: "events" | "tuples" } = {},
+): SourceAdapter<LangGraphEvent | LangGraphTuple> {
   return {
-    name: "langgraph", key: e => Array.isArray(e) ? e[0] : e.event,
+    name: "langgraph",
+    key: (e) => (Array.isArray(e) ? e[0] : e.event),
     decoder(context) {
       const life = new Lifecycle();
-      const messages = new Map<string, string>();
-      const tools = new Map<string, { id: string; name: string; started: boolean; pending: string }>();
+      const callIds = new Map<string, string[]>();
+      const tools = new Map<
+        string,
+        { id: string; name: string; started: boolean; pending: string }
+      >();
       let interrupted = false;
       return {
         async push(input) {
-          const e = (options.input === "tuples" && Array.isArray(input) ? { event: input[0], data: input[1] } : input) as LangGraphEvent;
+          const e = (
+            options.input === "tuples" && Array.isArray(input)
+              ? { event: input[0], data: input[1] }
+              : input
+          ) as LangGraphEvent;
           const out: CanonicalEvent[] = [];
           switch (e.event) {
-            case "metadata": return life.start(typeof e.data.run_id === "string" ? e.data.run_id : life.id);
-            case "messages": case "messages-tuple": {
+            case "metadata":
+              return life.start(
+                typeof e.data.run_id === "string" ? e.data.run_id : life.id,
+              );
+            case "messages":
+            case "messages-tuple": {
               const [message, metadata] = e.data;
               // Namespace + step disambiguate IDs reused by separate subgraph invocations.
-              const scope = JSON.stringify([metadata.langgraph_checkpoint_ns ?? "", metadata.langgraph_step ?? "", metadata.langgraph_node ?? ""]);
-              if (!message.id) throw new Error("LangGraph messages require a stable id; supply one in source middleware.");
+              const namespace = String(metadata.langgraph_checkpoint_ns ?? "");
+              const scope = JSON.stringify([
+                metadata.langgraph_checkpoint_ns ?? "",
+                metadata.langgraph_step ?? "",
+                metadata.langgraph_node ?? "",
+              ]);
+              if (!message.id)
+                throw new Error(
+                  "LangGraph messages require a stable id; supply one in source middleware.",
+                );
               const messageId = `${scope}:${message.id}`;
-              messages.set(messageId, messageId);
               out.push(...life.start());
               if (message.type === "tool" || message.type === "ToolMessage") {
-                if (!message.tool_call_id) throw new Error("Tool result requires tool_call_id.");
-                return [...out, { type: "tool.result", id: `${scope}:${message.tool_call_id}`, result: message.content, isError: message.status === "error" }];
+                if (!message.tool_call_id)
+                  throw new Error("Tool result requires tool_call_id.");
+                const lookup = `${namespace}:${message.tool_call_id}`;
+                const candidates = callIds.get(lookup) ?? [];
+                if (candidates.length !== 1) throw new Error("Missing or ambiguous LangGraph tool result identity.");
+                const id = candidates[0]!;
+                callIds.delete(lookup);
+                return [
+                  ...out,
+                  ...(life.tools.has(id) ? life.endTool(id) : []),
+                  {
+                    type: "tool.result",
+                    id,
+                    result: message.content,
+                    isError: message.status === "error",
+                  },
+                ];
               }
-              if (message.type && !["ai", "AIMessageChunk", "AIMessage"].includes(message.type)) return unsupported(context, e, "Only assistant and tool messages are supported.");
+              if (
+                message.type &&
+                !["ai", "AIMessageChunk", "AIMessage"].includes(message.type)
+              )
+                return unsupported(
+                  context,
+                  e,
+                  "Only assistant and tool messages are supported.",
+                );
               if (typeof message.content === "string") {
-                if (message.content) out.push(...life.delta(`${messageId}:text`, message.content, "text", messageId));
+                if (message.content)
+                  out.push(
+                    ...life.delta(
+                      `${messageId}:text`,
+                      message.content,
+                      "text",
+                      messageId,
+                    ),
+                  );
               } else {
                 for (const [index, block] of message.content.entries()) {
                   const blockId = `${messageId}:${block.index ?? index}:${block.type}`;
-                  if (block.type === "text" && typeof block.text === "string") out.push(...life.delta(blockId, block.text, "text", messageId));
-                  else if ((block.type === "thinking" || block.type === "reasoning") && typeof (block.thinking ?? block.text) === "string") out.push(...life.delta(blockId, (block.thinking ?? block.text)!, "reasoning", messageId));
-                  else await context.unsupported(block, "Unsupported LangGraph content block.");
+                  if (block.type === "text" && typeof block.text === "string")
+                    out.push(
+                      ...life.delta(blockId, block.text, "text", messageId),
+                    );
+                  else if (
+                    (block.type === "thinking" || block.type === "reasoning") &&
+                    typeof (block.thinking ?? block.text) === "string"
+                  )
+                    out.push(
+                      ...life.delta(
+                        blockId,
+                        (block.thinking ?? block.text)!,
+                        "reasoning",
+                        messageId,
+                      ),
+                    );
+                  else
+                    await context.unsupported(
+                      block,
+                      "Unsupported LangGraph content block.",
+                    );
                 }
               }
               for (const call of message.tool_call_chunks ?? []) {
                 const lookup = `${messageId}:${call.index ?? call.id ?? 0}`;
-                const tool = tools.get(lookup) ?? { id: "", name: "", started: false, pending: "" };
+                const tool = tools.get(lookup) ?? {
+                  id: "",
+                  name: "",
+                  started: false,
+                  pending: "",
+                };
                 if (call.id) tool.id = `${scope}:${call.id}`;
                 if (call.name) tool.name += call.name;
                 tool.pending += call.args ?? "";
-                if (!tool.started && tool.id && tool.name) { out.push(...life.tool(tool.id, tool.name, messageId)); tool.started = true; }
-                if (tool.started && tool.pending) { out.push(...life.toolDelta(tool.id, tool.pending)); tool.pending = ""; }
+                if (!tool.started && tool.id && tool.name) {
+                  out.push(...life.tool(tool.id, tool.name, messageId));
+                  tool.started = true;
+                  const alias = `${namespace}:${call.id ?? tool.id.slice(scope.length + 1)}`;
+                  callIds.set(alias, [...(callIds.get(alias) ?? []), tool.id]);
+                }
+                if (tool.started && tool.pending) {
+                  out.push(...life.toolDelta(tool.id, tool.pending));
+                  tool.pending = "";
+                }
                 tools.set(lookup, tool);
               }
-              if (!message.tool_call_chunks?.length) for (const call of message.tool_calls ?? []) {
-                const id = `${scope}:${call.id}`;
-                out.push(...life.tool(id, call.name, messageId), ...life.toolDelta(id, JSON.stringify(call.args)), ...life.endTool(id));
-              }
+              if (!message.tool_call_chunks?.length)
+                for (const call of message.tool_calls ?? []) {
+                  const id = `${scope}:${call.id}`;
+                  const alias = `${namespace}:${call.id}`;
+                  callIds.set(alias, [...(callIds.get(alias) ?? []), id]);
+                  out.push(
+                    ...life.tool(id, call.name, messageId),
+                    ...life.toolDelta(id, JSON.stringify(call.args)),
+                    ...life.endTool(id),
+                  );
+                }
               return out;
             }
             case "values": {
@@ -78,19 +194,46 @@ export function langGraph(options: { input?: "events" | "tuples" } = {}): Source
                 interrupted = true;
                 for (const item of e.data.__interrupt__) {
                   const interrupt = object(item);
-                  if (typeof interrupt.id !== "string") throw new Error("LangGraph interrupt requires an id.");
-                  out.push({ type: "interaction.requested", id: interrupt.id, kind: "question", payload: interrupt.value });
+                  if (typeof interrupt.id !== "string")
+                    throw new Error("LangGraph interrupt requires an id.");
+                  out.push({
+                    type: "interaction.requested",
+                    id: interrupt.id,
+                    kind: "question",
+                    payload: interrupt.value,
+                  });
                 }
               }
-              return [...life.start(), { type: "state.snapshot", value: e.data }, ...out];
+              return [
+                ...life.start(),
+                { type: "state.snapshot", value: e.data },
+                ...out,
+              ];
             }
-            case "custom": return [...life.start(), { type: "custom", name: "langgraph", value: e.data }];
-            case "error": life.ended = true; return [{ type: "error", message: e.data.message ?? e.data.error ?? "LangGraph error" }];
-            default: return unsupported(context, e, "Unsupported LangGraph stream mode. Use messages, values, custom or metadata envelopes.");
+            case "custom":
+              return [
+                ...life.start(),
+                { type: "custom", name: "langgraph", value: e.data },
+              ];
+            case "error":
+              life.ended = true;
+              return [
+                {
+                  type: "error",
+                  message: e.data.message ?? e.data.error ?? "LangGraph error",
+                },
+              ];
+            default:
+              return unsupported(
+                context,
+                e,
+                "Unsupported LangGraph stream mode. Use messages, values, custom or metadata envelopes.",
+              );
           }
         },
         finish() {
-          if ([...tools.values()].some(t => !t.started || t.pending)) throw new Error("Incomplete LangGraph tool identity.");
+          if ([...tools.values()].some((t) => !t.started || t.pending))
+            throw new Error("Incomplete LangGraph tool identity.");
           // LangGraph iterator exhaustion is the run boundary (unlike provider SSE).
           return life.ended ? [] : life.end(interrupted ? "waiting" : "stop");
         },
