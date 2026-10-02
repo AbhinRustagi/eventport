@@ -1,0 +1,54 @@
+{
+  "name": "eventport",
+  "version": "0.1.0",
+  "description": "Typed, composable adapters for AI event streams.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./chat-completions": {
+      "types": "./dist/adapters/chat-completions.d.ts",
+      "import": "./dist/adapters/chat-completions.js"
+    },
+    "./responses": {
+      "types": "./dist/adapters/responses.d.ts",
+      "import": "./dist/adapters/responses.js"
+    },
+    "./anthropic": {
+      "types": "./dist/adapters/anthropic.d.ts",
+      "import": "./dist/adapters/anthropic.js"
+    },
+    "./agui": {
+      "types": "./dist/adapters/agui.d.ts",
+      "import": "./dist/adapters/agui.js"
+    },
+    "./ai-sdk": {
+      "types": "./dist/adapters/ai-sdk.d.ts",
+      "import": "./dist/adapters/ai-sdk.js"
+    },
+    "./langgraph": {
+      "types": "./dist/adapters/langgraph.d.ts",
+      "import": "./dist/adapters/langgraph.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "dev": "npm run build && node playground/server.mjs"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}
