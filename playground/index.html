@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Eventport — Stream workbench</title>
+  <link rel="stylesheet" href="/playground/style.css">
+</head>
+<body>
+  <header><a class="brand" href="/" aria-label="Eventport home"><span class="mark">e↗</span> eventport<span class="version">0.1</span></a><div class="header-right"><span class="dot"></span> Local workbench <a href="https://github.com" hidden>Source</a><span class="license">MIT</span></div></header>
+  <main>
+    <div class="intro"><div><div class="eyebrow">ONE PIPELINE. EVERY EVENT.</div><h1>Different protocols.<br><span>Same conversation.</span></h1><p>Inspect how AI events move between protocols.<br>Live streams and stored events. No API keys required.</p></div><div class="hero-note"><span>01 — DECODE</span><span>02 — TRANSFORM</span><span>03 — ENCODE</span></div></div>
+    <section class="routing" aria-label="Conversion configuration">
+      <div class="select-group"><label for="source">SOURCE PROTOCOL</label><select id="source"><option value="responses">OpenAI Responses</option value="chat-completions">Chat Completions</option><option value="anthropic">Anthropic Messages</option><option value="agui">AG-UI</option><option value="ai-sdk">Vercel AI SDK</option><option value="langgraph">LangGraph</option></select></div>
+      <div class="route-line"><span></span><b>X</b><span></span><i>→</i></div>
+      <div class="select-group"><label for="target">DESTINATION PROTOCOL</label><select id="target"><option value="agui">AG-UI</option><option value="ai-sdk">Vercel AI SDK</option><option value="chat-completions">Chat Completions</option><option value="responses">OpenAI Responses</option><option value="anthropic">Anthropic Messages</option></select></div>
+      <button id="run" class="primary">Run conversion <span>↗</span></button><button id="stop" hidden>Stop</button>
+    </section>
+    <div class="toolbar"><div class="modes" role="group" aria-label="Input mode"><button id="stored" class="active" aria-pressed="true">Stored events</button><button id="live" aria-pressed="false">Live replay</button></div><label class="toggle"><input id="uppercase" type="checkbox"> Uppercase text middleware</label><label class="policy">Unsupported <select id="policy"><option value="error">Stop with error</option><option value="drop">Drop + report</option></select></label></div>
+    <section class="workspace">
+      <div class="panel"><div class="panel-head"><h2>Input</h2><span id="input-count" class="badge">0 events</span><button id="reset" class="text-button">Reset sample</button></div><label class="sr-only" for="input">Source event array as JSON</label><textarea id="input" spellcheck="false"></textarea><div class="panel-foot">Editable JSON · source-native event array</div></div>
+      <div class="panel"><div class="panel-head"><h2>Output</h2><span id="output-count" class="badge">0 events</span><button id="copy" class="text-button">Copy JSON</button></div><div id="output" class="event-list"><div class="empty"><span>↗</span><strong>Your events, translated.</strong><p>Choose a destination and run the pipeline.<br>Each emitted event will appear here.</p></div></div><div class="panel-foot" id="status" role="status" aria-live="polite">Ready to convert</div></div>
+    </section>
+    <section id="diagnostics" hidden aria-live="polite"></section>
+    <section class="bottom"><div class="code-panel"><div class="eyebrow">USE IT IN YOUR APP</div><pre id="code"></pre></div><div class="coverage"><div class="eyebrow">BOOTSTRAP COVERAGE</div><p>Text & tool arguments<span>All six sources</span></p><p>Reasoning & approvals<span>Protocol-dependent</span></p><p>LangGraph<span>Input only</span></p><small>This is event conversion. It does not execute tools, resume agents, or convert complete message documents.</small></div></section>
+    <footer>Explicit adapters. Typed hooks. Zero runtime dependencies.<span>Built to connect, not to take over.</span></footer>
+  </main>
+  <script type="module" src="/playground/app.mjs"></script>
+</body>
+</html>
