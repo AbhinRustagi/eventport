@@ -1,3 +1,4 @@
+import { eventValidator } from "./validate.js";
 import type {
   CanonicalEvent,
   Context,
@@ -166,7 +167,9 @@ export class Conversion<I, O> implements AsyncIterable<O> {
     const encoder = this.target.encoder(
       this.context("encode", this.target.name, signal),
     );
+    const validate = eventValidator();
     const output = async (event: CanonicalEvent) => {
+      validate(event);
       check(signal);
       const result: O[] = [];
       for (const value of await encoder.push(event))
@@ -181,12 +184,12 @@ export class Conversion<I, O> implements AsyncIterable<O> {
       )) {
         check(signal);
         for (const canonical of await decoder.push(event))
-          yield* await output(canonical);
+          yield* await abortable(output(canonical), signal);
       }
     }
     check(signal);
     for (const canonical of await decoder.finish())
-      yield* await output(canonical);
+      yield* await abortable(output(canonical), signal);
     for (const value of await encoder.finish())
       yield* await apply(value, this.target, this.targetHooks);
   }
