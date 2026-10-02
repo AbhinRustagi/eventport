@@ -1,6 +1,7 @@
 /** Normalized facts. Conversion never executes tools or resolves approvals. */
 export type CanonicalEvent =
   | { type: "run.start"; id: string }
+  | { type: "step.start" | "step.end"; id: string }
   | { type: "run.end"; reason: string }
   | { type: "block.start"; id: string; messageId: string; kind: "text" | "reasoning" }
   | { type: "block.delta"; id: string; text: string }
