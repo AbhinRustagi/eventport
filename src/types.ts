@@ -23,7 +23,8 @@ export type MaybePromise<T> = T | Promise<T>;
 export type Input<T> = Iterable<T> | AsyncIterable<T> | ReadableStream<T>;
 export type EventKey<E> = E extends { type: infer K extends string } ? K
   : E extends { object: infer K extends string } ? K
-  : E extends { event: infer K extends string } ? K : never;
+  : E extends { event: infer K extends string } ? K
+  : E extends readonly [infer K extends string, unknown] ? K : never;
 type EventOf<E, K> = E extends unknown ? K extends EventKey<E> ? E : never : never;
 export type Middleware<E> = { [K in EventKey<E>]?: (event: EventOf<E, K>) => MaybePromise<E | readonly E[] | null> };
 export interface Hooks<E> {
