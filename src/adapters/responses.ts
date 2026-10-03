@@ -1,110 +1,14 @@
 import type { Adapter, CanonicalEvent } from "../types.js";
 import { key, Lifecycle, namedSSE, unsupported } from "../internal.js";
 
-export type ResponseItem =
-  | {
-      type: "message";
-      id: string;
-      role: "assistant";
-      status?: string;
-      content: Array<{
-        type: "output_text";
-        text: string;
-        annotations?: unknown[];
-      }>;
-    }
-  | {
-      type: "function_call";
-      id: string;
-      call_id: string;
-      name: string;
-      arguments: string;
-      status?: string;
-    }
-  | {
-      type: "reasoning";
-      id: string;
-      summary: Array<{ type: "summary_text"; text: string }>;
-      encrypted_content?: string | null;
-    };
-export interface ResponseSnapshot {
-  id: string;
-  object?: "response";
-  status?: string;
-  model?: string;
-  output?: ResponseItem[];
-  usage?: {
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-  } | null;
-  error?: { code: string; message: string } | null;
-  incomplete_details?: { reason: string } | null;
-  [field: string]: unknown;
-}
-type Indexed = {
-  item_id: string;
-  output_index: number;
-  sequence_number?: number;
-};
-export type ResponsesEvent =
-  | {
-      type:
-        | "response.created"
-        | "response.in_progress"
-        | "response.completed"
-        | "response.incomplete"
-        | "response.failed";
-      response: ResponseSnapshot;
-      sequence_number?: number;
-    }
-  | {
-      type: "response.output_item.added" | "response.output_item.done";
-      output_index: number;
-      item: ResponseItem;
-      sequence_number?: number;
-    }
-  | ({
-      type: "response.content_part.added" | "response.content_part.done";
-      content_index: number;
-      part: { type: "output_text"; text: string; annotations: unknown[] };
-    } & Indexed)
-  | ({
-      type: "response.output_text.delta";
-      content_index: number;
-      delta: string;
-    } & Indexed)
-  | ({
-      type: "response.output_text.done";
-      content_index: number;
-      text: string;
-    } & Indexed)
-  | ({
-      type: "response.function_call_arguments.delta";
-      delta: string;
-    } & Indexed)
-  | ({
-      type: "response.function_call_arguments.done";
-      arguments: string;
-    } & Indexed)
-  | ({
-      type:
-        | "response.reasoning_summary_part.added"
-        | "response.reasoning_summary_part.done";
-      summary_index: number;
-      part: { type: "summary_text"; text: string };
-    } & Indexed)
-  | ({
-      type: "response.reasoning_summary_text.delta";
-      summary_index: number;
-      delta: string;
-    } & Indexed)
-  | ({
-      type: "response.reasoning_summary_text.done";
-      summary_index: number;
-      text: string;
-    } & Indexed)
-  | { type: "error"; message: string; code?: string; sequence_number?: number };
+import type {
+  ResponseStreamEvent,
+  Response,
+  ResponseOutputItem,
+} from "openai/resources/responses/responses";
+export type ResponsesEvent = ResponseStreamEvent;
+export type ResponseSnapshot = Response;
+export type ResponseItem = ResponseOutputItem;
 
 export function responses(
   options: { model?: string } = {},
@@ -126,6 +30,10 @@ export function responses(
             case "response.output_item.added": {
               const item = e.item;
               if (item.type === "function_call") {
+                if (!item.id)
+                  throw new Error(
+                    "Responses function call requires an item id.",
+                  );
                 calls.set(item.id, item.call_id);
                 return [
                   ...life.tool(item.call_id, item.name, item.id),
@@ -206,7 +114,13 @@ export function responses(
               ];
             case "error":
               life.ended = true;
-              return [{ type: "error", message: e.message, code: e.code }];
+              return [
+                {
+                  type: "error",
+                  message: e.message,
+                  code: e.code ?? undefined,
+                },
+              ];
             default:
               return unsupported(context, e);
           }
@@ -219,10 +133,29 @@ export function responses(
       let sequence = 0;
       const items: ResponseItem[] = [];
       const blocks = new Map<string, { item: ResponseItem; index: number }>();
-      let usage: ResponseSnapshot["usage"] = null;
-      const snapshot = (status: string): ResponseSnapshot => ({
+      let usage: ResponseSnapshot["usage"] = undefined;
+      const snapshot = (
+        status: ResponseSnapshot["status"],
+      ): ResponseSnapshot => ({
         id,
         object: "response",
+        access_programs: null,
+        output_text: items
+          .flatMap((item) =>
+            item.type === "message"
+              ? item.content.flatMap((part) =>
+                  part.type === "output_text" ? [part.text] : [],
+                )
+              : [],
+          )
+          .join(""),
+        instructions: null,
+        metadata: null,
+        parallel_tool_calls: true,
+        temperature: null,
+        tool_choice: "auto",
+        tools: [],
+        top_p: null,
         created_at: Math.floor(Date.now() / 1000),
         status,
         model: options.model ?? "unknown",
@@ -231,7 +164,10 @@ export function responses(
         error: null,
         incomplete_details: null,
       });
-      const emit = (events: ResponsesEvent[]) =>
+      type Unsequenced<E> = E extends unknown
+        ? Omit<E, "sequence_number">
+        : never;
+      const emit = (events: Unsequenced<ResponsesEvent>[]): ResponsesEvent[] =>
         events.map((event) => ({ ...event, sequence_number: sequence++ }));
       return {
         async push(e) {
@@ -262,7 +198,7 @@ export function responses(
               const index = items.length;
               items.push(item);
               blocks.set(e.id, { item, index });
-              const events: ResponsesEvent[] = [
+              const events: Unsequenced<ResponsesEvent>[] = [
                 {
                   type: "response.output_item.added",
                   output_index: index,
@@ -287,33 +223,40 @@ export function responses(
             case "block.delta": {
               const b = blocks.get(e.id);
               if (!b || b.item.type !== "message") return [];
-              b.item.content[0]!.text += e.text;
+              const part = b.item.content[0];
+              if (!part || part.type !== "output_text")
+                throw new Error("Missing output text part.");
+              part.text += e.text;
               return emit([
                 {
                   type: "response.output_text.delta",
-                  item_id: b.item.id,
+                  item_id: b.item.id!,
                   output_index: b.index,
                   content_index: 0,
                   delta: e.text,
+                  logprobs: [],
                 },
               ]);
             }
             case "block.end": {
               const b = blocks.get(e.id);
               if (!b || b.item.type !== "message") return [];
-              const part = b.item.content[0]!;
+              const part = b.item.content[0];
+              if (!part || part.type !== "output_text")
+                throw new Error("Missing output text part.");
               b.item.status = "completed";
               return emit([
                 {
                   type: "response.output_text.done",
-                  item_id: b.item.id,
+                  item_id: b.item.id!,
                   output_index: b.index,
                   content_index: 0,
                   text: part.text,
+                  logprobs: [],
                 },
                 {
                   type: "response.content_part.done",
-                  item_id: b.item.id,
+                  item_id: b.item.id!,
                   output_index: b.index,
                   content_index: 0,
                   part: { ...part, annotations: part.annotations ?? [] },
@@ -353,7 +296,7 @@ export function responses(
               return emit([
                 {
                   type: "response.function_call_arguments.delta",
-                  item_id: b.item.id,
+                  item_id: b.item.id!,
                   output_index: b.index,
                   delta: e.text,
                 },
@@ -367,7 +310,7 @@ export function responses(
               return emit([
                 {
                   type: "response.function_call_arguments.done",
-                  item_id: b.item.id,
+                  item_id: b.item.id!,
                   output_index: b.index,
                   arguments: b.item.arguments,
                 },
@@ -381,6 +324,11 @@ export function responses(
             case "usage":
               usage = {
                 input_tokens: e.input ?? 0,
+                input_tokens_details: {
+                  cached_tokens: 0,
+                  cache_write_tokens: 0,
+                },
+                output_tokens_details: { reasoning_tokens: 0 },
                 output_tokens: e.output ?? 0,
                 total_tokens: e.total ?? (e.input ?? 0) + (e.output ?? 0),
               };
@@ -412,7 +360,7 @@ export function responses(
                   response: {
                     ...snapshot("failed"),
                     error: {
-                      code: e.code ?? "conversion_error",
+                      code: "server_error",
                       message: e.message,
                     },
                   },

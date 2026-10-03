@@ -1,36 +1,30 @@
 import type { CanonicalEvent, SourceAdapter } from "../types.js";
 import { Lifecycle, object, unsupported } from "../internal.js";
 
-export interface LangGraphMessage {
-  id?: string;
-  type?: string;
-  content:
-    | string
-    | Array<{
-        type: string;
-        text?: string;
-        thinking?: string;
-        [field: string]: unknown;
-      }>;
-  tool_call_chunks?: Array<{
-    index?: number;
-    id?: string;
-    name?: string;
-    args?: string;
-  }>;
-  tool_calls?: Array<{ id: string; name: string; args: unknown }>;
-  tool_call_id?: string;
-  status?: string;
-}
+import type {
+  Message,
+  MessagesTupleStreamEvent,
+  ValuesStreamEvent,
+  CustomStreamEvent,
+  MetadataStreamEvent,
+  ErrorStreamEvent,
+} from "@langchain/langgraph-sdk";
+import type { ToolCallChunk } from "@langchain/core/messages";
+/** LangGraph serializes chunk fields but its Message union omits tool_call_chunks. */
+type WithChunkFields<M> = M extends { type: "ai" }
+  ? M & { tool_call_chunks?: ToolCallChunk[] }
+  : M;
+export type LangGraphMessage = WithChunkFields<Message>;
+type MessageEvent = Omit<MessagesTupleStreamEvent, "data"> & {
+  data: [LangGraphMessage, MessagesTupleStreamEvent["data"][1]];
+};
 export type LangGraphEvent =
-  | {
-      event: "messages" | "messages-tuple";
-      data: [LangGraphMessage, Record<string, unknown>];
-    }
-  | { event: "values"; data: Record<string, unknown> }
-  | { event: "custom"; data: unknown }
-  | { event: "metadata"; data: Record<string, unknown> }
-  | { event: "error"; data: { message?: string; error?: string } };
+  | MessageEvent
+  | (Omit<MessageEvent, "event"> & { event: "messages-tuple" })
+  | ValuesStreamEvent<Record<string, unknown>>
+  | CustomStreamEvent<unknown>
+  | MetadataStreamEvent
+  | ErrorStreamEvent;
 export type LangGraphTuple = {
   [K in LangGraphEvent["event"]]: [
     K,
@@ -89,12 +83,15 @@ export function langGraph(
                 );
               const messageId = `${scope}:${message.id}`;
               out.push(...life.start());
-              if (message.type === "tool" || message.type === "ToolMessage") {
+              if (message.type === "tool") {
                 if (!message.tool_call_id)
                   throw new Error("Tool result requires tool_call_id.");
                 const lookup = `${namespace}:${message.tool_call_id}`;
                 const candidates = callIds.get(lookup) ?? [];
-                if (candidates.length !== 1) throw new Error("Missing or ambiguous LangGraph tool result identity.");
+                if (candidates.length !== 1)
+                  throw new Error(
+                    "Missing or ambiguous LangGraph tool result identity.",
+                  );
                 const id = candidates[0]!;
                 callIds.delete(lookup);
                 return [
@@ -110,7 +107,7 @@ export function langGraph(
               }
               if (
                 message.type &&
-                !["ai", "AIMessageChunk", "AIMessage"].includes(message.type)
+                !["ai", "ToolCallChunk", "AIMessage"].includes(message.type)
               )
                 return unsupported(
                   context,
@@ -128,7 +125,9 @@ export function langGraph(
                     ),
                   );
               } else {
-                for (const [index, block] of message.content.entries()) {
+                for (const [index, rawBlock] of message.content.entries()) {
+                  const block = object(rawBlock);
+                  const reasoning = block.thinking ?? block.text;
                   const blockId = `${messageId}:${block.index ?? index}:${block.type}`;
                   if (block.type === "text" && typeof block.text === "string")
                     out.push(
@@ -136,15 +135,10 @@ export function langGraph(
                     );
                   else if (
                     (block.type === "thinking" || block.type === "reasoning") &&
-                    typeof (block.thinking ?? block.text) === "string"
+                    typeof reasoning === "string"
                   )
                     out.push(
-                      ...life.delta(
-                        blockId,
-                        (block.thinking ?? block.text)!,
-                        "reasoning",
-                        messageId,
-                      ),
+                      ...life.delta(blockId, reasoning, "reasoning", messageId),
                     );
                   else
                     await context.unsupported(
@@ -153,7 +147,9 @@ export function langGraph(
                     );
                 }
               }
-              for (const call of message.tool_call_chunks ?? []) {
+              for (const call of (message.type === "ai"
+                ? message.tool_call_chunks
+                : undefined) ?? []) {
                 const lookup = `${messageId}:${call.index ?? call.id ?? 0}`;
                 const tool = tools.get(lookup) ?? {
                   id: "",
@@ -176,8 +172,10 @@ export function langGraph(
                 }
                 tools.set(lookup, tool);
               }
-              if (!message.tool_call_chunks?.length)
+              if (message.type === "ai" && !message.tool_call_chunks?.length)
                 for (const call of message.tool_calls ?? []) {
+                  if (!call.id)
+                    throw new Error("LangGraph tool call requires an id.");
                   const id = `${scope}:${call.id}`;
                   const alias = `${namespace}:${call.id}`;
                   callIds.set(alias, [...(callIds.get(alias) ?? []), id]);

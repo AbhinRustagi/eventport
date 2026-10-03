@@ -12,3 +12,5 @@ Verified locally on Node.js 22 and 26 with TypeScript 5.9.3.
 - Browser verification of the local workbench with stored events, live replay and uppercase middleware.
 
 These checks used temporary scripts outside the repository, following the instruction not to add test files. They are not a committed regression suite or proof of complete protocol compliance. A durable fixture-based regression suite should precede a public release.
+
+The upstream-type migration additionally checks bundled declarations with `skipLibCheck` disabled, verifies that no external runtime or type imports survive, and installs the tarball in an isolated consumer without the SDKs. License notices are generated from the packages contributing declarations.

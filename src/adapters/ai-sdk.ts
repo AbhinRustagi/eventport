@@ -7,46 +7,9 @@ import {
   unsupported,
 } from "../internal.js";
 
-/** UIMessage stream protocol (v1 header), not AI SDK Core's fullStream. */
-export type AISDKEvent =
-  | { type: "start"; messageId?: string; messageMetadata?: unknown }
-  | { type: "finish"; finishReason?: string; messageMetadata?: unknown }
-  | {
-      type: "text-start" | "text-end" | "reasoning-start" | "reasoning-end";
-      id: string;
-    }
-  | { type: "text-delta" | "reasoning-delta"; id: string; delta: string }
-  | {
-      type: "tool-input-start";
-      toolCallId: string;
-      toolName: string;
-      dynamic?: boolean;
-    }
-  | { type: "tool-input-delta"; toolCallId: string; inputTextDelta: string }
-  | {
-      type: "tool-input-available";
-      toolCallId: string;
-      toolName: string;
-      input: unknown;
-      dynamic?: boolean;
-    }
-  | {
-      type: "tool-output-available";
-      toolCallId: string;
-      output: unknown;
-      dynamic?: boolean;
-    }
-  | { type: "tool-output-error"; toolCallId: string; errorText: string }
-  | {
-      type: "tool-approval-request";
-      approvalId: string;
-      toolCallId: string;
-      signature?: string;
-    }
-  | { type: "start-step" | "finish-step" }
-  | { type: "error"; errorText: string }
-  | { type: "abort"; reason?: string }
-  | { type: `data-${string}`; data: unknown; id?: string; transient?: boolean };
+import type { UIMessageChunk } from "ai";
+/** UIMessage stream protocol, not AI SDK Core fullStream. */
+export type AISDKEvent = UIMessageChunk;
 
 export function aiSDK(): Adapter<AISDKEvent> {
   return {

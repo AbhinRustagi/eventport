@@ -1,48 +1,15 @@
 import type { Adapter, CanonicalEvent } from "../types.js";
 import { key, Lifecycle, namedSSE, unsupported } from "../internal.js";
 
-export type AnthropicBlock =
-  | { type: "text"; text: string }
-  | { type: "thinking"; thinking: string; signature: string }
-  | { type: "redacted_thinking"; data: string }
-  | { type: "tool_use"; id: string; name: string; input: unknown };
+import type {
+  RawMessageStreamEvent,
+  ContentBlock,
+} from "@anthropic-ai/sdk/resources/messages";
+import type { ErrorResponse } from "@anthropic-ai/sdk/resources/shared";
+export type AnthropicBlock = ContentBlock;
+/** Ping is a transport keepalive, omitted from the SDK stream union. */
 export type AnthropicEvent =
-  | {
-      type: "message_start";
-      message: {
-        id: string;
-        type: "message";
-        role: "assistant";
-        model: string;
-        content: AnthropicBlock[];
-        stop_reason: string | null;
-        stop_sequence: string | null;
-        usage: { input_tokens: number; output_tokens: number };
-      };
-    }
-  | {
-      type: "content_block_start";
-      index: number;
-      content_block: AnthropicBlock;
-    }
-  | {
-      type: "content_block_delta";
-      index: number;
-      delta:
-        | { type: "text_delta"; text: string }
-        | { type: "thinking_delta"; thinking: string }
-        | { type: "signature_delta"; signature: string }
-        | { type: "input_json_delta"; partial_json: string };
-    }
-  | { type: "content_block_stop"; index: number }
-  | {
-      type: "message_delta";
-      delta: { stop_reason: string | null; stop_sequence?: string | null };
-      usage: { output_tokens: number; input_tokens?: number };
-    }
-  | { type: "message_stop" }
-  | { type: "ping" }
-  | { type: "error"; error: { type: string; message: string } };
+  RawMessageStreamEvent | ErrorResponse | { type: "ping" };
 
 export function anthropic(
   options: { model?: string } = {},
@@ -184,7 +151,7 @@ export function anthropic(
         }
       >();
       return {
-        async push(e) {
+        async push(e): Promise<AnthropicEvent[]> {
           switch (e.type) {
             case "run.start":
               return [
@@ -196,9 +163,22 @@ export function anthropic(
                     role: "assistant",
                     model: options.model ?? "unknown",
                     content: [],
+                    container: null,
+                    diagnostics: null,
+                    stop_details: null,
                     stop_reason: null,
                     stop_sequence: null,
-                    usage: { input_tokens: 0, output_tokens: 0 },
+                    usage: {
+                      input_tokens: 0,
+                      output_tokens: 0,
+                      cache_creation_input_tokens: null,
+                      cache_read_input_tokens: null,
+                      cache_creation: null,
+                      inference_geo: null,
+                      server_tool_use: null,
+                      service_tier: null,
+                      output_tokens_details: null,
+                    },
                   },
                 },
               ];
@@ -211,7 +191,7 @@ export function anthropic(
                   index: i,
                   content_block:
                     e.kind === "text"
-                      ? { type: "text", text: "" }
+                      ? { type: "text", text: "", citations: null }
                       : { type: "thinking", thinking: "", signature: "" },
                 },
               ];
@@ -228,6 +208,7 @@ export function anthropic(
                     type: "tool_use",
                     id: e.id,
                     name: e.name,
+                    caller: { type: "direct" },
                     input: {},
                   },
                 },
@@ -307,8 +288,17 @@ export function anthropic(
                         ? "tool_use"
                         : "end_turn",
                     stop_sequence: null,
+                    stop_details: null,
+                    container: null,
                   },
-                  usage: { input_tokens: input, output_tokens: output },
+                  usage: {
+                    input_tokens: input,
+                    output_tokens: output,
+                    cache_creation_input_tokens: null,
+                    cache_read_input_tokens: null,
+                    server_tool_use: null,
+                    output_tokens_details: null,
+                  },
                 },
                 { type: "message_stop" },
               ];
@@ -316,7 +306,8 @@ export function anthropic(
               return [
                 {
                   type: "error",
-                  error: { type: e.code ?? "api_error", message: e.message },
+                  error: { type: "api_error", message: e.message },
+                  request_id: null,
                 },
               ];
             default:

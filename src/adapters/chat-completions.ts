@@ -1,35 +1,8 @@
 import type { Adapter, CanonicalEvent } from "../types.js";
 import { Lifecycle, sse, unsupported } from "../internal.js";
 
-export interface ChatCompletionChunk {
-  object: "chat.completion.chunk";
-  id: string;
-  created?: number;
-  model?: string;
-  choices: Array<{
-    index: number;
-    delta: {
-      role?: string;
-      content?: string | null;
-      refusal?: string | null;
-      tool_calls?: Array<{
-        index: number;
-        id?: string;
-        type?: "function";
-        function?: { name?: string; arguments?: string };
-      }>;
-      [extension: string]: unknown;
-    };
-    finish_reason?: string | null;
-    logprobs?: unknown;
-  }>;
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-    [key: string]: unknown;
-  } | null;
-}
+import type { ChatCompletionChunk } from "openai/resources/chat/completions/completions";
+export type { ChatCompletionChunk } from "openai/resources/chat/completions/completions";
 export interface ChatCompletionsOptions {
   model?: string;
   id?: string;
@@ -74,13 +47,13 @@ export function chatCompletions(
               throw new Error("Chat content received after finish_reason.");
             out.push(...life.start(e.id));
             const d = choice.delta;
-            for (const k of Object.keys(d))
+            for (const [k, value] of Object.entries(d))
               if (
                 !["role", "content", "tool_calls"].includes(k) &&
-                d[k] != null
+                value != null
               )
                 await context.unsupported(
-                  { [k]: d[k] },
+                  { [k]: value },
                   `Unsupported Chat Completions delta field: ${k}`,
                 );
             if (choice.logprobs != null)
@@ -135,7 +108,7 @@ export function chatCompletions(
       let usage: ChatCompletionChunk["usage"];
       const chunk = (
         delta: ChatCompletionChunk["choices"][number]["delta"],
-        finish_reason: string | null = null,
+        finish_reason: ChatCompletionChunk["choices"][number]["finish_reason"] = null,
       ): ChatCompletionChunk => ({
         id,
         object: "chat.completion.chunk",

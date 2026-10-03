@@ -45,12 +45,20 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/build.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
     "dev": "npm run build && node playground/server.mjs",
     "prepack": "npm run build"
   },
   "devDependencies": {
-    "typescript": "~5.9.3"
+    "@ag-ui/core": "1.0.1",
+    "@anthropic-ai/sdk": "0.131.0",
+    "@langchain/core": "1.2.14",
+    "@langchain/langgraph-sdk": "1.12.0",
+    "ai": "7.0.127",
+    "openai": "7.27.0",
+    "rollup": "4.64.0",
+    "rollup-plugin-dts": "6.5.1",
+    "typescript": "5.9.3"
   }
 }

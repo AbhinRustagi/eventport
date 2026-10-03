@@ -99,7 +99,9 @@ Return an event to keep/replace it, an array to expand it, or `null` to drop it.
 
 Cross-chunk operations need state. A replacement on `"sec"` and `"ret"` cannot find `"secret"` independently. Do not drop lifecycle starts while keeping their deltas. Canonical lifecycle checks detect malformed sequences; arbitrary destination middleware remains responsible for preserving its protocol.
 
-Bundled types describe supported variants. Broader native SDK event unions are accepted structurally; new/unsupported variants are diagnosed at runtime rather than requiring an SDK dependency or cast. This does not replace application input validation.
+Adapter types come directly from the upstream packages, installed only as pinned development dependencies. The build bundles their reachable declarations into Eventport, including third-party license notices. Consumers need neither the SDKs nor their types installed; all SDK imports in our source are type-only, and build checks reject external imports and compile declarations without ambient Node types. Unrelated AI SDK runtime globals are omitted from the declaration bundle.
+
+Middleware keys cover the upstream event unions, including events that do not yet have a conversion mapping. Unsupported variants are diagnosed at runtime. LangGraph's omitted chunk fields are derived from LangChain's `ToolCallChunk`; the `messages-tuple` envelope alias and Anthropic's transport `ping` are explicit compatibility additions. This does not replace application input validation.
 
 ## Unsupported events
 

@@ -7,6 +7,7 @@ export type {
   Middleware,
   Hooks,
   Input,
+  NativeInput,
   Diagnostic,
   UnsupportedPolicy,
   Context,
