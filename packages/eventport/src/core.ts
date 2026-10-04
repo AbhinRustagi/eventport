@@ -1,13 +1,17 @@
+import { DEFAULT } from "./types.js";
 import { eventValidator } from "./validate.js";
 import type {
   CanonicalEvent,
   Context,
   Diagnostic,
   Hooks,
+  Middleware,
+  Overrides,
   Input,
   NativeInput,
   SourceAdapter,
   TargetAdapter,
+  TargetHooks,
   UnsupportedPolicy,
 } from "./types.js";
 
@@ -101,8 +105,7 @@ async function apply<E>(
   hooks: Hooks<E>,
 ): Promise<readonly E[]> {
   const handlers = hooks.middleware as
-    | Record<string, (event: E) => unknown>
-    | undefined;
+    Record<string, (event: E) => unknown> | undefined;
   const fn = handlers?.[adapter.key(event)];
   const output = fn ? await fn(event) : event;
   if (output === undefined)
@@ -128,7 +131,7 @@ export class Conversion<I, O> implements AsyncIterable<O> {
     private source: SourceAdapter<I>,
     private sourceHooks: Hooks<I>,
     private target: TargetAdapter<O>,
-    private targetHooks: Hooks<O>,
+    private targetHooks: TargetHooks<I, O>,
     private signal?: AbortSignal,
   ) {}
 
@@ -145,10 +148,12 @@ export class Conversion<I, O> implements AsyncIterable<O> {
     stage: Diagnostic["stage"],
     adapter: string,
     signal?: AbortSignal,
+    replaced: () => boolean = () => false,
   ): Context {
     return {
       signal,
       unsupported: async (event, reason) => {
+        if (replaced()) return;
         const diagnostic = { stage, adapter, event, reason };
         const decision =
           typeof this.policy === "function"
@@ -165,19 +170,22 @@ export class Conversion<I, O> implements AsyncIterable<O> {
         "Conversions are single-use; create a new conversion to replay input.",
       );
     this.started = true;
+    let replacing = false;
     const decoder = this.source.decoder(
-      this.context("decode", this.source.name, signal),
+      this.context("decode", this.source.name, signal, () => replacing),
     );
     const encoder = this.target.encoder(
-      this.context("encode", this.target.name, signal),
+      this.context("encode", this.target.name, signal, () => replacing),
     );
     const validate = eventValidator();
     const output = async (event: CanonicalEvent) => {
       validate(event);
       check(signal);
       const result: O[] = [];
-      for (const value of await encoder.push(event))
-        result.push(...(await apply(value, this.target, this.targetHooks)));
+      const encoded = await encoder.push(event);
+      if (!replacing)
+        for (const value of encoded)
+          result.push(...(await apply(value, this.target, this.targetHooks)));
       return result;
     };
     for await (const original of read(this.input, signal)) {
@@ -187,8 +195,50 @@ export class Conversion<I, O> implements AsyncIterable<O> {
         this.sourceHooks,
       )) {
         check(signal);
-        for (const canonical of await decoder.push(event))
-          yield* await abortable(output(canonical), signal);
+        const handlers = this.targetHooks.overrides as
+          | Record<
+              string,
+              (
+                event: I,
+              ) =>
+                | O
+                | readonly O[]
+                | null
+                | typeof DEFAULT
+                | Promise<O | readonly O[] | null | typeof DEFAULT>
+            >
+          | undefined;
+        const key = this.source.key(event);
+        const handler =
+          handlers && Object.hasOwn(handlers, key) ? handlers[key] : undefined;
+        const replacement = handler
+          ? await abortable(Promise.resolve(handler(event)), signal)
+          : DEFAULT;
+        if (replacement === undefined)
+          throw new TypeError(
+            "Overrides must return an event, an array, null, or eventport.DEFAULT; received undefined.",
+          );
+        replacing = replacement !== DEFAULT;
+        try {
+          for (const canonical of await abortable(
+            Promise.resolve(decoder.push(event)),
+            signal,
+          ))
+            yield* await abortable(output(canonical), signal);
+          if (replacement !== DEFAULT && replacement !== null) {
+            const events =
+              Array.isArray(replacement) && !this.target.isEvent?.(replacement)
+                ? replacement
+                : [replacement as O];
+            for (const value of events)
+              yield* await abortable(
+                apply(value, this.target, this.targetHooks),
+                signal,
+              );
+          }
+        } finally {
+          replacing = false;
+        }
       }
     }
     check(signal);
@@ -259,7 +309,95 @@ export class Conversion<I, O> implements AsyncIterable<O> {
   }
 }
 
+/** Immutable source configuration. Middleware here receives source events. */
+export class SourceBuilder<I> {
+  constructor(
+    private source: SourceAdapter<I>,
+    private hooks: Hooks<I> = {},
+  ) {}
+
+  middleware(handlers: Middleware<I>): SourceBuilder<I> {
+    return new SourceBuilder(this.source, {
+      ...this.hooks,
+      middleware: { ...this.hooks.middleware, ...handlers },
+    });
+  }
+
+  observe(observer: NonNullable<Hooks<I>["observe"]>): SourceBuilder<I> {
+    return new SourceBuilder(this.source, { ...this.hooks, observe: observer });
+  }
+
+  to<O>(target: TargetAdapter<O>): Converter<I, O> {
+    return new Converter(this.source, this.hooks, target);
+  }
+}
+
+/** Reusable configuration. Every convert() creates an independent, single-use run. */
+export class Converter<I, O> {
+  constructor(
+    private source: SourceAdapter<I>,
+    private sourceHooks: Hooks<I>,
+    private target: TargetAdapter<O>,
+    private targetHooks: TargetHooks<I, O> = {},
+    private policy: UnsupportedPolicy = "error",
+  ) {}
+
+  private with(
+    hooks: TargetHooks<I, O>,
+    policy = this.policy,
+  ): Converter<I, O> {
+    return new Converter(
+      this.source,
+      this.sourceHooks,
+      this.target,
+      hooks,
+      policy,
+    );
+  }
+
+  middleware(handlers: Middleware<O>): Converter<I, O> {
+    return this.with({
+      ...this.targetHooks,
+      middleware: { ...this.targetHooks.middleware, ...handlers },
+    });
+  }
+
+  overrides(handlers: Overrides<I, O>): Converter<I, O> {
+    return this.with({
+      ...this.targetHooks,
+      overrides: { ...this.targetHooks.overrides, ...handlers },
+    });
+  }
+
+  observe(observer: NonNullable<Hooks<O>["observe"]>): Converter<I, O> {
+    return this.with({ ...this.targetHooks, observe: observer });
+  }
+
+  onUnsupported(policy: UnsupportedPolicy): Converter<I, O> {
+    return this.with(this.targetHooks, policy);
+  }
+
+  convert(
+    input: Input<NativeInput<I>>,
+    options: { signal?: AbortSignal } = {},
+  ): Conversion<I, O> {
+    return new Conversion(
+      input as Input<I>,
+      this.source,
+      this.sourceHooks,
+      this.target,
+      this.targetHooks,
+      options.signal,
+    ).onUnsupported(this.policy);
+  }
+}
+
 export const eventport = {
+  DEFAULT: DEFAULT as typeof DEFAULT,
+  from<I>(source: SourceAdapter<I>): SourceBuilder<I> {
+    return new SourceBuilder(source);
+  },
+  /** @deprecated Configure with from().to(), then call convert(input). */
   convert<I>(input: Input<I>, options: { signal?: AbortSignal } = {}) {
     return {
       from<S>(
@@ -272,7 +410,7 @@ export const eventport = {
         return {
           to<O>(
             target: TargetAdapter<O>,
-            targetHooks: NoInfer<Hooks<O>> = {},
+            targetHooks: NoInfer<TargetHooks<S, O>> = {},
           ): Conversion<S, O> {
             return new Conversion(
               input as unknown as Input<S>,

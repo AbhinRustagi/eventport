@@ -72,6 +72,16 @@ export type Middleware<E> = {
     event: EventOf<E, K>,
   ) => MaybePromise<E | readonly E[] | null>;
 };
+/** Ask an override to use the built-in conversion for this source event. */
+export const DEFAULT = Symbol("eventport.DEFAULT");
+export type Overrides<I, O> = {
+  [K in EventKey<I>]?: (
+    event: EventOf<I, K>,
+  ) => MaybePromise<O | readonly O[] | null | typeof DEFAULT>;
+};
+export interface TargetHooks<I, O> extends Hooks<O> {
+  overrides?: Overrides<I, O>;
+}
 export interface Hooks<E> {
   middleware?: Middleware<E>;
   /** Awaited; observer errors terminate conversion. */

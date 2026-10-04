@@ -30,14 +30,12 @@ for await (const e of converted)
 agUI();
 // @ts-expect-error LangGraph is input-only.
 eventport.convert(source).from(responses()).to(langGraph());
-eventport
-  .convert(source)
-  .from(responses(), {
-    middleware: {
-      // @ts-expect-error Void-returning middleware must be rejected.
-      "response.output_text.delta": () => {},
-    },
-  });
+eventport.convert(source).from(responses(), {
+  middleware: {
+    // @ts-expect-error Void-returning middleware must be rejected.
+    "response.output_text.delta": () => {},
+  },
+});
 // New native SDK event variants are accepted and diagnosed at runtime.
 const native: AsyncIterable<{ type: string; [key: string]: unknown }> =
   (async function* () {
@@ -83,3 +81,68 @@ const invalid: ChatCompletionChunk = {
   object: "chat.completion.chunk",
   choices: [],
 };
+
+// Override keys and inputs come from the source; results come from the target.
+eventport
+  .convert([])
+  .from(responses())
+  .to(aiSDK(), {
+    overrides: {
+      "response.output_text.delta": (event) =>
+        event.delta
+          ? { type: "text-delta", id: "text", delta: event.delta }
+          : eventport.DEFAULT,
+      // @ts-expect-error This is a destination event name, not a Responses event key.
+      "text-delta": () => null,
+    },
+  });
+eventport
+  .convert([])
+  .from(responses())
+  .to(aiSDK(), {
+    overrides: {
+      // @ts-expect-error Responses events cannot be returned as AI SDK destination events.
+      "response.output_text.delta": (event) => event,
+    },
+  });
+eventport
+  .convert([])
+  .from(responses())
+  .to(aiSDK(), {
+    overrides: {
+      // @ts-expect-error Overrides cannot return void.
+      "response.output_text.delta": () => {},
+    },
+  });
+
+const reusable = eventport
+  .from(responses())
+  .middleware({
+    "response.output_text.delta": (e) => ({
+      ...e,
+      delta: e.delta.toUpperCase(),
+    }),
+  })
+  .to(aiSDK())
+  .middleware({ "text-delta": (e) => ({ ...e, delta: e.delta }) })
+  .overrides({
+    "response.output_text.delta": (e) =>
+      e.delta ? { type: "data-custom", data: e.delta } : eventport.DEFAULT,
+  });
+const fluentOutput: AISDKEvent[] = await reusable.convert(source).collect();
+reusable.overrides({
+  // @ts-expect-error Overrides use source keys, not target keys.
+  "text-delta": () => null,
+});
+reusable.overrides({
+  // @ts-expect-error Must return target events.
+  "response.output_text.delta": (e) => e,
+});
+reusable.middleware({
+  // @ts-expect-error Middleware after to() uses target keys.
+  "response.output_text.delta": (e) => e,
+});
+// @ts-expect-error Overrides require a destination adapter.
+eventport.from(responses()).overrides({});
+// @ts-expect-error Responses input must contain native event objects.
+reusable.convert([42]);

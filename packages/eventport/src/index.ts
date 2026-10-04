@@ -1,4 +1,10 @@
-export { eventport, Conversion, UnsupportedEventError } from "./core.js";
+export {
+  eventport,
+  SourceBuilder,
+  Converter,
+  Conversion,
+  UnsupportedEventError,
+} from "./core.js";
 export type {
   Adapter,
   SourceAdapter,
@@ -6,6 +12,8 @@ export type {
   CanonicalEvent,
   Middleware,
   Hooks,
+  Overrides,
+  TargetHooks,
   Input,
   NativeInput,
   Diagnostic,
@@ -14,3 +22,4 @@ export type {
   Decoder,
   Encoder,
 } from "./types.js";
+export { DEFAULT } from "./types.js";

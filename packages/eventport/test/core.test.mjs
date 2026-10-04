@@ -178,3 +178,192 @@ test("streaming response propagates conversion errors to body consumption", asyn
   const response = convert([{ type: "future.event" }]).toResponse();
   await assert.rejects(() => response.text(), UnsupportedEventError);
 });
+
+test("overrides replace source output, preserve state, and pass through target hooks", async () => {
+  const seen = [];
+  const result = await eventport
+    .convert(samples.responses)
+    .from(responses(), {
+      middleware: {
+        "response.output_text.delta": (e) => ({
+          ...e,
+          delta: e.delta.toUpperCase(),
+        }),
+      },
+    })
+    .to(aiSDK(), {
+      overrides: {
+        "response.output_text.delta": async (e) => [
+          { type: "data-custom", data: e.delta },
+        ],
+      },
+      middleware: {
+        "data-custom": (e) => ({ ...e, data: `mapped:${e.data}` }),
+      },
+      observe: (e) => seen.push(e),
+    })
+    .collect();
+  assert.equal(text(result), "");
+  assert.deepEqual(
+    result.filter((e) => e.type === "data-custom").map((e) => e.data),
+    ["mapped:HELLO FROM ", "mapped:EVENTPORT."],
+  );
+  assert.ok(result.some((e) => e.type === "text-end"));
+  assert.ok(result.some((e) => e.type === "finish"));
+  assert.deepEqual(seen, result);
+});
+test("overrides support default fallback and null suppression", async () => {
+  const result = await eventport
+    .convert(samples.responses)
+    .from(responses())
+    .to(aiSDK(), {
+      overrides: {
+        "response.output_text.delta": (e) =>
+          e.delta === "Eventport." ? eventport.DEFAULT : null,
+      },
+    })
+    .collect();
+  assert.equal(text(result), "Eventport.");
+});
+test("overrides handle unsupported source events without changing the global policy", async () => {
+  const result = await eventport
+    .convert([{ type: "app.custom" }, ...samples.responses])
+    .from(responses())
+    .to(aiSDK(), {
+      overrides: {
+        "app.custom": () => ({ type: "data-custom", data: "handled" }),
+      },
+    })
+    .collect();
+  assert.equal(result[0].type, "data-custom");
+  await assert.rejects(
+    eventport
+      .convert([{ type: "app.custom" }])
+      .from(responses())
+      .to(aiSDK(), {
+        overrides: { "app.custom": () => eventport.DEFAULT },
+      })
+      .collect(),
+    UnsupportedEventError,
+  );
+});
+test("void and throwing overrides fail; pending overrides are abortable", async () => {
+  for (const handler of [
+    () => undefined,
+    () => {
+      throw new Error("override failed");
+    },
+  ]) {
+    await assert.rejects(
+      eventport
+        .convert(samples.responses)
+        .from(responses())
+        .to(aiSDK(), {
+          overrides: { "response.created": handler },
+        })
+        .collect(),
+    );
+  }
+  const controller = new AbortController();
+  const result = eventport
+    .convert(samples.responses, { signal: controller.signal })
+    .from(responses())
+    .to(aiSDK(), {
+      overrides: {
+        "response.created": () => {
+          controller.abort(new Error("cancel override"));
+          return new Promise(() => {});
+        },
+      },
+    })
+    .collect();
+  await assert.rejects(result, /cancel override/);
+});
+
+test("fluent converters are reusable and derived configurations are isolated", async () => {
+  const base = eventport.from(responses()).to(aiSDK());
+  const changed = base.middleware({
+    "text-delta": (e) => ({ ...e, delta: e.delta.toUpperCase() }),
+  });
+  const overridden = base.overrides({
+    "response.output_text.delta": (e) => ({
+      type: "data-custom",
+      data: e.delta,
+    }),
+  });
+  const [a, b, c, d] = await Promise.all([
+    base.convert(samples.responses).collect(),
+    changed.convert(samples.responses).collect(),
+    overridden.convert(samples.responses).collect(),
+    base.convert(samples.responses).collect(),
+  ]);
+  assert.equal(text(a), "Hello from Eventport.");
+  assert.equal(text(b), "HELLO FROM EVENTPORT.");
+  assert.equal(text(c), "");
+  assert.equal(text(d), text(a));
+});
+test("fluent source and destination middleware surround overrides in order", async () => {
+  const calls = [];
+  const source = eventport.from(responses());
+  const converter = source
+    .middleware({
+      "response.output_text.delta": (e) => ({
+        ...e,
+        delta: e.delta.toUpperCase(),
+      }),
+    })
+    .observe((e) => {
+      if (e.type === "response.output_text.delta")
+        calls.push(`source:${e.delta}`);
+    })
+    .to(aiSDK())
+    .overrides({
+      "response.output_text.delta": (e) => ({
+        type: "data-custom",
+        data: e.delta,
+      }),
+    })
+    .middleware({ "data-custom": (e) => ({ ...e, data: `target:${e.data}` }) })
+    .observe((e) => {
+      if (e.type === "data-custom") calls.push(e.data);
+    });
+  await converter.convert(samples.responses).collect();
+  assert.deepEqual(calls, [
+    "source:HELLO FROM ",
+    "target:HELLO FROM ",
+    "source:EVENTPORT.",
+    "target:EVENTPORT.",
+  ]);
+  assert.equal(
+    text(await source.to(aiSDK()).convert(samples.responses).collect()),
+    "Hello from Eventport.",
+  );
+});
+test("fluent override fallback, suppression and policy do not mutate their base", async () => {
+  const base = eventport.from(responses()).to(aiSDK());
+  const modified = base.overrides({
+    "response.output_text.delta": (e) =>
+      e.delta === "Eventport." ? eventport.DEFAULT : null,
+  });
+  assert.equal(
+    text(await modified.convert(samples.responses).collect()),
+    "Eventport.",
+  );
+  const input = [{ type: "unknown" }, ...samples.responses];
+  assert.equal(
+    text(await base.onUnsupported("drop").convert(input).collect()),
+    "Hello from Eventport.",
+  );
+  await assert.rejects(base.convert(input).collect(), UnsupportedEventError);
+});
+test("overrides cannot bypass malformed lifecycle state", async () => {
+  await assert.rejects(
+    eventport
+      .from(aiSDK())
+      .to(aiSDK())
+      .overrides({ "text-delta": () => null })
+      .convert([{ type: "text-delta", id: "missing", delta: "bad" }])
+      .collect(),
+    /without start/,
+  );
+});
