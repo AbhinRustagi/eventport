@@ -30,11 +30,13 @@ for await (const e of converted)
 agUI();
 // @ts-expect-error LangGraph is input-only.
 eventport.convert(source).from(responses()).to(langGraph());
-// @ts-expect-error Void-returning middleware must be rejected.
 eventport
   .convert(source)
   .from(responses(), {
-    middleware: { "response.output_text.delta": () => {} },
+    middleware: {
+      // @ts-expect-error Void-returning middleware must be rejected.
+      "response.output_text.delta": () => {},
+    },
   });
 // New native SDK event variants are accepted and diagnosed at runtime.
 const native: AsyncIterable<{ type: string; [key: string]: unknown }> =
