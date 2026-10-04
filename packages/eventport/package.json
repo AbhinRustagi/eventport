@@ -31,9 +31,9 @@
       "types": "./dist/adapters/agui.d.ts",
       "import": "./dist/adapters/agui.js"
     },
-    "./ai-sdk": {
-      "types": "./dist/adapters/ai-sdk.d.ts",
-      "import": "./dist/adapters/ai-sdk.js"
+    "./vercel": {
+      "types": "./dist/adapters/vercel.d.ts",
+      "import": "./dist/adapters/vercel.js"
     },
     "./langgraph": {
       "types": "./dist/adapters/langgraph.d.ts",

@@ -18,6 +18,7 @@ export default {
         "responses",
         "anthropic",
         "agui",
+        "vercel",
         "ai-sdk",
         "langgraph",
       ].map((name) => [`adapters/${name}`, `dist/adapters/${name}.d.ts`]),

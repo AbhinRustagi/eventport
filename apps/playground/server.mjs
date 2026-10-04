@@ -8,7 +8,7 @@ import { eventport } from 'eventport';
 import { chatCompletions, responses } from 'eventport/openai';
 import { anthropic } from 'eventport/anthropic';
 import { agUI } from 'eventport/agui';
-import { aiSDK } from 'eventport/ai-sdk';
+import { aiSDK } from 'eventport/vercel';
 import { langGraph } from 'eventport/langgraph';
 
 const root = fileURLToPath(new URL('./', import.meta.url));

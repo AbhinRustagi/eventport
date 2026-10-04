@@ -2,7 +2,7 @@ import { eventport } from '/dist/index.js';
 import { chatCompletions, responses } from '/dist/adapters/openai.js';
 import { anthropic } from '/dist/adapters/anthropic.js';
 import { agUI } from '/dist/adapters/agui.js';
-import { aiSDK } from '/dist/adapters/ai-sdk.js';
+import { aiSDK } from '/dist/adapters/vercel.js';
 import { langGraph } from '/dist/adapters/langgraph.js';
 import { samples } from '/playground/samples.mjs';
 const $ = id => document.getElementById(id);

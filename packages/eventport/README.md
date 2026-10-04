@@ -43,7 +43,7 @@ The package has not been published. Use this checkout or `pnpm pack:lib` to inst
 | `eventport/openai` | `responses()` | Responses events | Responses-style text/function-call event subset |
 | `eventport/anthropic` | `anthropic()` | Messages streaming events | Messages streaming events |
 | `eventport/agui` | `agUI({ threadId, runId })` | AG-UI events | AG-UI events |
-| `eventport/ai-sdk` | `aiSDK()` | UIMessage stream chunks | UIMessage stream chunks |
+| `eventport/vercel` | `aiSDK()` | UIMessage stream chunks | UIMessage stream chunks |
 | `eventport/langgraph` | `langGraph()` | SDK `{ event, data }` envelopes | — |
 
 `langGraph({ input: "tuples" })` accepts named stream tuples (`[mode, data]`) from a graph using multiple stream modes. `updates`, `streamEvents()` callbacks, protocol-v2 channels and subgraph triple-tuples are not implemented. See the coverage document before connecting a graph.
