@@ -84,8 +84,6 @@ export interface TargetHooks<I, O> extends Hooks<O> {
 }
 export interface Hooks<E> {
   middleware?: Middleware<E>;
-  /** Awaited; observer errors terminate conversion. */
-  observe?: (event: E) => MaybePromise<void>;
 }
 export interface Diagnostic {
   stage: "decode" | "encode";

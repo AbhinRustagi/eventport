@@ -94,13 +94,11 @@ const stream = eventport
       delta: event.delta.toUpperCase(),
     }),
   })
-  .observe((event) => console.debug("source", event.type))
   .to(agUI({ threadId, runId }))
-  .observe((event) => console.debug("destination", event.type))
   .convert(upstream);
 ```
 
-Return an event to keep/replace it, an array to expand it, or `null` to drop it. Returning `undefined` is rejected by TypeScript and at runtime. Callbacks and observers are awaited in order. Observer return values do not affect output; exceptions terminate conversion. Source observation sees events after source middleware; destination observation sees events after destination middleware.
+Return an event to keep/replace it, an array to expand it, or `null` to drop it. Returning `undefined` is rejected by TypeScript and at runtime. Middleware callbacks are awaited in order; exceptions terminate conversion.
 
 Cross-chunk operations need state. A replacement on `"sec"` and `"ret"` cannot find `"secret"` independently. Do not drop lifecycle starts while keeping their deltas. Canonical lifecycle checks detect malformed sequences; arbitrary destination middleware remains responsible for preserving its protocol.
 
@@ -127,13 +125,13 @@ const converter = eventport
 const output = converter.convert(upstream);
 ```
 
-Return a destination event or array to replace the built-in output, `null` to suppress it, or `eventport.DEFAULT` to keep normal conversion. Async handlers are supported; `undefined` is rejected. Source middleware runs before the override; destination middleware and observers see only the selected output.
+Return a destination event or array to replace the built-in output, `null` to suppress it, or `eventport.DEFAULT` to keep normal conversion. Async handlers are supported; `undefined` is rejected. Source middleware runs before the override; destination middleware sees only the selected output.
 
 The built-in decoder and encoder still update their state. An explicit replacement handles unsupported-event diagnostics for that source event, but does not bypass malformed lifecycle errors. Finalization output is not overridden. Replacements do not update the encoder's stored content or IDs, so later snapshots still reflect the original conversion. Your replacement must keep the destination sequence valid, including any start/end events produced by the same source event.
 
 ## Reusable configuration
 
-`.from()` creates a source builder; `.to()` selects the destination. `.middleware()` and `.observe()` apply to the selected side at that point. Configuration methods return new builders; they do not mutate earlier configurations. Repeated middleware/override calls merge handlers, with the newest handler winning for the same key; repeated `.observe()` calls replace the observer for that side.
+`.from()` creates a source builder; `.to()` selects the destination. `.middleware()` applies to the selected side at that point. Configuration methods return new builders; they do not mutate earlier configurations. Repeated middleware/override calls merge handlers, with the newest handler winning for the same key.
 
 ```ts
 const converter = eventport.from(responses()).to(aiSDK());

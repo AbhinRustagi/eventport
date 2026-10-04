@@ -8,8 +8,7 @@ import { text } from "./helpers.mjs";
 const convert = (input = samples.responses, options, hooks) =>
   eventport.convert(input, options).from(responses(), hooks).to(aiSDK());
 
-test("async middleware can expand and drop events; observers see transformed output", async () => {
-  const observed = [];
+test("async middleware can expand and drop events", async () => {
   const output = await convert(undefined, undefined, {
     middleware: {
       "response.output_text.delta": async (e) =>
@@ -20,18 +19,10 @@ test("async middleware can expand and drop events; observers see transformed out
               { ...e, delta: "B" },
             ],
     },
-    observe: (e) => observed.push(e),
   }).collect();
   assert.equal(text(output), "AB");
-  assert.deepEqual(
-    observed
-      .filter((e) => e.type === "response.output_text.delta")
-      .map((e) => e.delta),
-    ["A", "B"],
-  );
 });
-test("destination middleware and observer receive native target events", async () => {
-  const seen = [];
+test("destination middleware receives native target events", async () => {
   const output = await eventport
     .convert(samples.responses)
     .from(responses())
@@ -39,11 +30,9 @@ test("destination middleware and observer receive native target events", async (
       middleware: {
         "text-delta": (e) => ({ ...e, delta: e.delta.toUpperCase() }),
       },
-      observe: (e) => seen.push(e),
     })
     .collect();
   assert.equal(text(output), "HELLO FROM EVENTPORT.");
-  assert.deepEqual(seen, output);
 });
 test("unknown events fail with a structured diagnostic or can be explicitly dropped", async () => {
   const unknown = { type: "future.event" };
@@ -70,7 +59,7 @@ test("truncated provider input fails instead of synthesizing a successful finish
     /Incomplete source stream/,
   );
 });
-test("void middleware and failed observers terminate conversion", async () => {
+test("void and throwing middleware terminate conversion", async () => {
   await assert.rejects(
     () =>
       convert(undefined, undefined, {
@@ -78,12 +67,14 @@ test("void middleware and failed observers terminate conversion", async () => {
       }).collect(),
     /undefined/,
   );
-  const failure = new Error("observer failed");
+  const failure = new Error("middleware failed");
   await assert.rejects(
     () =>
       convert(undefined, undefined, {
-        observe: () => {
-          throw failure;
+        middleware: {
+          "response.output_text.delta": () => {
+            throw failure;
+          },
         },
       }).collect(),
     (e) => e === failure,
@@ -180,7 +171,6 @@ test("streaming response propagates conversion errors to body consumption", asyn
 });
 
 test("overrides replace source output, preserve state, and pass through target hooks", async () => {
-  const seen = [];
   const result = await eventport
     .convert(samples.responses)
     .from(responses(), {
@@ -200,7 +190,6 @@ test("overrides replace source output, preserve state, and pass through target h
       middleware: {
         "data-custom": (e) => ({ ...e, data: `mapped:${e.data}` }),
       },
-      observe: (e) => seen.push(e),
     })
     .collect();
   assert.equal(text(result), "");
@@ -210,7 +199,6 @@ test("overrides replace source output, preserve state, and pass through target h
   );
   assert.ok(result.some((e) => e.type === "text-end"));
   assert.ok(result.some((e) => e.type === "finish"));
-  assert.deepEqual(seen, result);
 });
 test("overrides support default fallback and null suppression", async () => {
   const result = await eventport
@@ -307,14 +295,11 @@ test("fluent source and destination middleware surround overrides in order", asy
   const source = eventport.from(responses());
   const converter = source
     .middleware({
-      "response.output_text.delta": (e) => ({
-        ...e,
-        delta: e.delta.toUpperCase(),
-      }),
-    })
-    .observe((e) => {
-      if (e.type === "response.output_text.delta")
-        calls.push(`source:${e.delta}`);
+      "response.output_text.delta": (e) => {
+        const changed = { ...e, delta: e.delta.toUpperCase() };
+        calls.push(`source:${changed.delta}`);
+        return changed;
+      },
     })
     .to(aiSDK())
     .overrides({
@@ -323,9 +308,12 @@ test("fluent source and destination middleware surround overrides in order", asy
         data: e.delta,
       }),
     })
-    .middleware({ "data-custom": (e) => ({ ...e, data: `target:${e.data}` }) })
-    .observe((e) => {
-      if (e.type === "data-custom") calls.push(e.data);
+    .middleware({
+      "data-custom": (e) => {
+        const changed = { ...e, data: `target:${e.data}` };
+        calls.push(changed.data);
+        return changed;
+      },
     });
   await converter.convert(samples.responses).collect();
   assert.deepEqual(calls, [

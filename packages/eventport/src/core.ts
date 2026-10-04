@@ -118,7 +118,6 @@ async function apply<E>(
       : Array.isArray(output) && !adapter.isEvent?.(output)
         ? output
         : [output as E];
-  for (const value of events) await hooks.observe?.(value);
   return events;
 }
 
@@ -323,10 +322,6 @@ export class SourceBuilder<I> {
     });
   }
 
-  observe(observer: NonNullable<Hooks<I>["observe"]>): SourceBuilder<I> {
-    return new SourceBuilder(this.source, { ...this.hooks, observe: observer });
-  }
-
   to<O>(target: TargetAdapter<O>): Converter<I, O> {
     return new Converter(this.source, this.hooks, target);
   }
@@ -367,10 +362,6 @@ export class Converter<I, O> {
       ...this.targetHooks,
       overrides: { ...this.targetHooks.overrides, ...handlers },
     });
-  }
-
-  observe(observer: NonNullable<Hooks<O>["observe"]>): Converter<I, O> {
-    return this.with({ ...this.targetHooks, observe: observer });
   }
 
   onUnsupported(policy: UnsupportedPolicy): Converter<I, O> {

@@ -90,12 +90,11 @@ const output = eventport
       delta: event.delta.toUpperCase(),
     }),
   })
-  .observe((event) => console.debug(event.type))
   .to(agUI({ threadId, runId }))
   .convert(upstream);
 ```
 
-Return an event, an array of events, or `null` to drop one. Returning `undefined` is an error. Hooks are awaited in order. Observers see events after middleware and cannot replace them.
+Return an event, an array of events, or `null` to drop one. Returning `undefined` is an error. Hooks are awaited in order.
 
 Keep lifecycle events consistent: dropping a start while retaining its deltas makes the stream invalid. Operations that match text across chunks need application-managed state.
 
@@ -118,13 +117,13 @@ const converter = eventport
 const output = converter.convert(upstream);
 ```
 
-Return a destination event or array to replace the built-in output, `null` to suppress it, or `eventport.DEFAULT` to keep normal conversion. Async handlers are supported; `undefined` is rejected. Source middleware runs before the override; destination middleware and observers see only the selected output.
+Return a destination event or array to replace the built-in output, `null` to suppress it, or `eventport.DEFAULT` to keep normal conversion. Async handlers are supported; `undefined` is rejected. Source middleware runs before the override; destination middleware sees only the selected output.
 
 The built-in decoder and encoder still update their state. An explicit replacement handles unsupported-event diagnostics for that source event, but does not bypass malformed lifecycle errors. Finalization output is not overridden. Replacements do not update the encoder's stored content or IDs, so later snapshots still reflect the original conversion. Your replacement must keep the destination sequence valid, including any start/end events produced by the same source event.
 
 ## Reusable configuration
 
-`.from()` creates a source builder; `.to()` selects the destination. `.middleware()` and `.observe()` apply to the selected side at that point. Configuration methods return new builders; they do not mutate earlier configurations. Repeated middleware/override calls merge handlers, with the newest handler winning for the same key; repeated `.observe()` calls replace the observer for that side.
+`.from()` creates a source builder; `.to()` selects the destination. `.middleware()` applies to the selected side at that point. Configuration methods return new builders; they do not mutate earlier configurations. Repeated middleware/override calls merge handlers, with the newest handler winning for the same key.
 
 ```ts
 const converter = eventport.from(responses()).to(aiSDK());
