@@ -264,7 +264,9 @@ export const eventport = {
     return {
       from<S>(
         source: SourceAdapter<S> &
-          ([I] extends [NativeInput<S>] ? unknown : { readonly incompatibleInput: never }),
+          ([I] extends [NativeInput<S>]
+            ? unknown
+            : { readonly incompatibleInput: never }),
         hooks: NoInfer<Hooks<S>> = {},
       ) {
         return {

@@ -43,10 +43,15 @@ export type CanonicalEvent =
 
 export type MaybePromise<T> = T | Promise<T>;
 /** Native SDK unions may include newer event variants; decoders diagnose them at runtime. */
-export type NativeInput<E> = E extends { type: string } ? { type: string }
-  : E extends { object: string } ? { object: string }
-  : E extends { event: string } ? { event: string; data: unknown }
-  : E extends readonly [string, unknown] ? readonly [string, unknown] : E;
+export type NativeInput<E> = E extends { type: string }
+  ? { type: string }
+  : E extends { object: string }
+    ? { object: string }
+    : E extends { event: string }
+      ? { event: string; data: unknown }
+      : E extends readonly [string, unknown]
+        ? readonly [string, unknown]
+        : E;
 export type Input<T> = Iterable<T> | AsyncIterable<T> | ReadableStream<T>;
 export type EventKey<E> = E extends { type: infer K extends string }
   ? K
