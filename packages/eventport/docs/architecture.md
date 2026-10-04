@@ -20,3 +20,7 @@ Conversions are single-use because upstream iterators may be one-shot. `.collect
 4. Optional bounded trace recording with source/canonical/destination provenance for the workbench. A ledger is not necessary for ordinary conversion.
 
 The public generic types accept native SDK unions while supplying narrow callback types for known variants. This is compatibility at the source seam, not a guarantee that every SDK event can be translated. Unsupported variants are handled by the configured policy.
+
+## Override behavior
+
+Overrides run after source middleware. Destination middleware receives only the selected output. Returning a replacement suppresses unsupported-event diagnostics for that source event, but malformed lifecycle errors still fail. The built-in decoder and encoder continue updating their state. Finalization output is not overridden, and later snapshots reflect the original converted content and IDs. Replacements must preserve a valid destination sequence.

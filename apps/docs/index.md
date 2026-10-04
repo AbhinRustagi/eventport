@@ -1,6 +1,6 @@
 # Eventport
 
-Typed adapters for converting AI events between protocols, on the server or in the browser. Import the adapters you use; the library has zero runtime dependencies and bundles the upstream event types.
+Typed AI protocol conversion for the server and browser. Zero runtime dependencies.
 
 ```ts
 import { eventport } from "eventport";
@@ -13,8 +13,6 @@ const output = eventport
   .convert(upstream);
 ```
 
-Your app calls the provider. Eventport converts its decoded events. It does not make model requests or execute tools.
-
 ## Get started
 
 Install Eventport in your app:
@@ -23,9 +21,7 @@ Install Eventport in your app:
 pnpm add eventport
 ```
 
-Eventport ships as ESM JavaScript with bundled TypeScript declarations. Import the adapters you need from their subpaths. Provider SDKs are only needed if your app uses them to call a provider.
-
-Here is a complete conversion using recorded AI SDK events:
+ESM JavaScript with bundled TypeScript types. Import only the adapters you use.
 
 ```ts
 import { eventport } from "eventport";
@@ -75,11 +71,9 @@ Choose how to consume the conversion:
 | `output.toReadableStream()`         | A stream of destination event objects                  |
 | `output.toResponse()`               | An SSE `Response` with destination headers and framing |
 
-Conversion is lazy and single-use. Create another pipeline to replay recorded events. `.collect()` stores the whole output in memory.
-
 ## Typed middleware
 
-Middleware keys and event payloads follow the selected adapter. Source hooks run before decoding; destination hooks run after encoding.
+Use `.middleware()` before `.to()` for source events, or after it for destination events. Keys and payloads are typed automatically.
 
 ```ts
 const output = eventport
@@ -94,13 +88,11 @@ const output = eventport
   .convert(upstream);
 ```
 
-Return an event, an array of events, or `null` to drop one. Returning `undefined` is an error. Hooks are awaited in order.
-
-Keep lifecycle events consistent: dropping a start while retaining its deltas makes the stream invalid. Operations that match text across chunks need application-managed state.
+Return an event, an array of events, or `null` to drop it. Async callbacks are supported.
 
 ## Overrides
 
-Use `.overrides()` after `.to()` to replace the destination events emitted for a source event. Keys and callback arguments follow the source adapter; return values follow the destination adapter.
+Replace a default conversion with your own destination event.
 
 ```ts
 const converter = eventport
@@ -117,13 +109,11 @@ const converter = eventport
 const output = converter.convert(upstream);
 ```
 
-Return a destination event or array to replace the built-in output, `null` to suppress it, or `eventport.DEFAULT` to keep normal conversion. Async handlers are supported; `undefined` is rejected. Source middleware runs before the override; destination middleware sees only the selected output.
-
-The built-in decoder and encoder still update their state. An explicit replacement handles unsupported-event diagnostics for that source event, but does not bypass malformed lifecycle errors. Finalization output is not overridden. Replacements do not update the encoder's stored content or IDs, so later snapshots still reflect the original conversion. Your replacement must keep the destination sequence valid, including any start/end events produced by the same source event.
+Return an event or array to replace the output, `null` to suppress it, or `eventport.DEFAULT` to keep the default. Keep start/end events consistent.
 
 ## Reusable configuration
 
-`.from()` creates a source builder; `.to()` selects the destination. `.middleware()` applies to the selected side at that point. Configuration methods return new builders; they do not mutate earlier configurations. Repeated middleware/override calls merge handlers, with the newest handler winning for the same key.
+Configure once and reuse. Chained methods return a new configuration.
 
 ```ts
 const converter = eventport.from(responses()).to(aiSDK());
@@ -135,9 +125,7 @@ const original = converter.convert(upstream);
 const replay = upperCase.convert(storedEvents);
 ```
 
-Each `.convert(input, { signal })` creates fresh decoder and encoder state, and returns a lazy, single-use run. Builders can be reused concurrently; mutable state captured inside your own callbacks remains your responsibility. Keep run-specific adapter options such as AG-UI IDs distinct when separate runs need distinct identities.
-
-The earlier `eventport.convert(input).from(source).to(target)` entry point remains available for compatibility, but is deprecated. New code should configure the converter first.
+Each `.convert()` call returns a new, single-use run.
 
 ## Server and assistant-ui
 
@@ -165,9 +153,9 @@ export async function POST(request: Request) {
 }
 ```
 
-Install `openai` in the server app for this example. Pass the same abort signal to the provider SDK and Eventport so cancellation stops both the network request and conversion.
+Install `openai` for this example and set `OPENAI_API_KEY` on the server. Pass the same abort signal to both calls.
 
-The [assistant-ui example app](https://github.com/AbhinRustagi/eventport/tree/main/apps/playground) includes conversation history, request validation, server-side configuration, and an AI SDK response wrapper that reports stream errors in the chat. Run it with `pnpm dev` after configuring `apps/playground/.env.local`.
+See the [assistant-ui example](https://github.com/AbhinRustagi/eventport/tree/main/apps/playground) for the complete app.
 
 ## Unsupported events and limits
 
@@ -184,6 +172,6 @@ const output = eventport
   });
 ```
 
-Eventport owns conversion state for one run. Your app owns authentication, persistence, tool execution, approval decisions, and resumption. Translating an approval request does not approve it. Protocol conversion is not guaranteed to be lossless, and translated usage is not authoritative billing data.
+Your app handles provider calls, tool execution, approvals, and persistence. See [adapter coverage](https://github.com/AbhinRustagi/eventport/blob/main/packages/eventport/docs/coverage.md) for supported events and limits.
 
 For implementation details, see the [architecture](https://github.com/AbhinRustagi/eventport/blob/main/packages/eventport/docs/architecture.md) and [package reference](https://github.com/AbhinRustagi/eventport/blob/main/packages/eventport/README.md).
