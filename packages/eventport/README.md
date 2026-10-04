@@ -193,7 +193,7 @@ Text is streamed incrementally. Active tool arguments are buffered for JSON vali
 - [Coverage and protocol references](docs/coverage.md)
 - [Bootstrap verification](docs/verification.md)
 
-MIT © 2026 Eventport contributors.
+MIT © 2026 AbhinRustagi.
 
 ## Tests
 
