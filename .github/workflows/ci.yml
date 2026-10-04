@@ -42,3 +42,5 @@ jobs:
         run: pnpm --filter @eventport/playground build
         env:
           NEXT_TELEMETRY_DISABLED: 1
+      - name: Build documentation and check links
+        run: pnpm docs:build

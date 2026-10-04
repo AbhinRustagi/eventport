@@ -12,6 +12,8 @@
     "dev": "pnpm --filter eventport build && pnpm --filter @eventport/playground dev",
     "example": "pnpm --filter eventport build && pnpm --filter @eventport/playground example",
     "pack:lib": "pnpm --filter eventport pack",
-    "test": "pnpm --filter eventport test && pnpm --filter @eventport/playground test"
+    "test": "pnpm --filter eventport test && pnpm --filter @eventport/playground test",
+    "docs:dev": "pnpm --filter @eventport/docs dev",
+    "docs:build": "pnpm --filter @eventport/docs build"
   }
 }

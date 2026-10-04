@@ -3,6 +3,7 @@
 A pnpm workspace for the lightweight AI event conversion library and its local playground.
 
 - `packages/eventport` — publishable MIT library; [API and adapter documentation](packages/eventport/README.md).
+- `apps/docs` — minimal VitePress documentation; run `pnpm docs:dev` at http://127.0.0.1:4322.
 - `apps/playground` — private Next.js + assistant-ui app with live model streams, using `eventport` through `workspace:*`; [setup and adapter paths](apps/playground/README.md).
 
 Requires Node.js 22+ and pnpm 10.34.3.

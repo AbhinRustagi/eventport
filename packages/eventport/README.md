@@ -25,7 +25,7 @@ pnpm install
 pnpm dev
 ```
 
-Open <http://127.0.0.1:4321>. The workbench uses local fixtures, lets you edit native events, and compares stored-array conversion with simulated live streaming. No keys, account, external API calls or telemetry. Stop with Ctrl-C; set `PORT` to change the port.
+Open <http://127.0.0.1:4321> for the assistant-ui example. Configure its server-side API key in `apps/playground/.env.local`; see the [app setup](../../apps/playground/README.md). Run `pnpm docs:dev` for the documentation at <http://127.0.0.1:4322>.
 
 ```sh
 pnpm check
