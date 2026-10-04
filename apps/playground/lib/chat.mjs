@@ -22,7 +22,14 @@ export class RequestError extends Error {
   }
 }
 
-export function parseChat(body, protocol = "responses") {
+export function parseChat(body, defaultProtocol = "responses") {
+  const protocol = body?.protocol ?? defaultProtocol;
+  if (
+    body?.protocol !== undefined &&
+    !Object.hasOwn(protocols, body.protocol)
+  ) {
+    throw new RequestError("Choose a supported protocol.");
+  }
   if (!Object.hasOwn(protocols, protocol))
     throw new RequestError("Unsupported EVENTPORT_ADAPTER configuration.", 503);
   if (

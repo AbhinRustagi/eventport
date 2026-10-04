@@ -147,13 +147,20 @@ test("validation preserves history and rejects invalid roles, attachments and em
   assert.deepEqual(parseChat(body).messages, messages);
   assert.equal(
     parseChat({ ...body, protocol: "anthropic" }).protocol,
-    "responses",
-    "Clients cannot select the server provider",
+    "anthropic",
+    "The selected protocol is used for this request",
   );
-  assert.equal(parseChat(body, "anthropic").protocol, "anthropic");
-  assert.throws(() => parseChat(body, "bad"), /EVENTPORT_ADAPTER/);
+  assert.equal(
+    parseChat({ ...body, protocol: undefined }, "anthropic").protocol,
+    "anthropic",
+  );
+  assert.throws(
+    () => parseChat({ ...body, protocol: undefined }, "bad"),
+    /EVENTPORT_ADAPTER/,
+  );
   for (const invalid of [
     null,
+    { ...body, protocol: "bad" },
     {
       ...body,
       messages: [

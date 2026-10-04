@@ -13,7 +13,7 @@ cp apps/playground/.env.example apps/playground/.env.local
 pnpm dev
 ```
 
-Open http://127.0.0.1:4321. Set `EVENTPORT_ADAPTER` on the server to choose an adapter (defaults to `responses`). There are no simulated responses or fallback models. Missing configuration produces an error in the chat. Keys are server-only and ignored by Git. Model names can be overridden in `.env.local`.
+Open http://127.0.0.1:4321. Choose a protocol in the chat header. `EVENTPORT_ADAPTER` sets the initial selection (defaults to `responses`). There are no simulated responses or fallback models. Missing configuration produces an error in the chat. Keys are server-only and ignored by Git. Model names can be overridden in `.env.local`.
 
 | Adapter            | Live source                                                            | Configuration                                                      |
 | ------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
@@ -26,7 +26,7 @@ Open http://127.0.0.1:4321. Set `EVENTPORT_ADAPTER` on the server to choose an a
 
 Every path ends in Eventport's `aiSDK()` target. The server forwards the conversation's text history on each request, so follow-up messages preserve context. LangGraph uses stateless runs with the full history. This playground does not implement tool execution, approval replies, attachments, or durable conversation storage.
 
-The browser sends standard chat messages to `/api/chat`. The route opens the configured provider stream and uses `eventport.convert(upstream).from(adapter).to(aiSDK())`. It returns the converted stream through the AI SDK response wrapper for standard error handling. No protocol selection, event inspection, or debug events are exposed in the chat UI.
+The browser sends chat messages and the selected protocol to `/api/chat`. The route validates the selection and opens the provider stream and uses `eventport.convert(upstream).from(adapter).to(aiSDK())`. It returns the converted stream through the AI SDK response wrapper for standard error handling. The protocol dropdown is disabled during a response. Changing it preserves the conversation; subsequent requests use the new adapter. No event inspector or debug events are exposed in the chat UI.
 
 Conversations can be created and switched in the default sidebar. They are in memory and disappear when the page reloads.
 
