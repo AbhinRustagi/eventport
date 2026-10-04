@@ -1,7 +1,7 @@
-import { eventport } from '../dist/index.js';
-import { responses } from '../dist/adapters/openi.js';
-import { agUI } from '../dist/adapters/agui.js';
-import { samples } from '../playground/samples.mjs';
+import { eventport } from 'eventport';
+import { responses } from 'eventport/openi';
+import { agUI } from 'eventport/agui';
+import { samples } from './samples.mjs';
 
 const events = await eventport
   .convert(samples.responses)

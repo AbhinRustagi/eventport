@@ -1,17 +1,18 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { resolve, extname, sep } from 'node:path';
+import { resolve, extname } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { eventport } from '../dist/index.js';
-import { chatCompletions, responses } from '../dist/adapters/openi.js';
-import { anthropic } from '../dist/adapters/anthropic.js';
-import { agUI } from '../dist/adapters/agui.js';
-import { aiSDK } from '../dist/adapters/ai-sdk.js';
-import { langGraph } from '../dist/adapters/langgraph.js';
+import { eventport } from 'eventport';
+import { chatCompletions, responses } from 'eventport/openi';
+import { anthropic } from 'eventport/anthropic';
+import { agUI } from 'eventport/agui';
+import { aiSDK } from 'eventport/ai-sdk';
+import { langGraph } from 'eventport/langgraph';
 
-const root = fileURLToPath(new URL('../', import.meta.url));
+const root = fileURLToPath(new URL('./', import.meta.url));
+const library = fileURLToPath(new URL('./', import.meta.resolve('eventport')));
 const factories = new Map(Object.entries({
   'chat-completions': chatCompletions, responses, anthropic,
   agui: () => agUI({ threadId: 'demo-thread', runId: 'demo-run' }),
@@ -42,11 +43,15 @@ const server = createServer(async (req, res) => {
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }
     const path = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
-    const relative = path === '/' ? 'playground/index.html' : path.replace(/^\//, '');
-    const file = resolve(root, relative);
-    if (!file.startsWith(root + sep) && !file.startsWith(root)) { res.writeHead(403).end(); return; }
-    // Only expose the built library and playground assets, never repository/config files.
-    if (!file.startsWith(resolve(root, 'dist') + sep) && !file.startsWith(resolve(root, 'playground') + sep)) { res.writeHead(404).end(); return; }
+    let file;
+    if (path.startsWith('/dist/')) {
+      file = resolve(library, path.slice('/dist/'.length));
+      if (!file.startsWith(library)) { res.writeHead(404).end(); return; }
+    } else {
+      const asset = path === '/' ? 'index.html' : path.replace(/^\/playground\//, '');
+      if (!['index.html', 'style.css', 'app.mjs', 'samples.mjs'].includes(asset)) { res.writeHead(404).end(); return; }
+      file = resolve(root, asset);
+    }
     const data = await readFile(file);
     res.writeHead(200, { 'Content-Type': mime[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' });
     res.end(req.method === 'HEAD' ? undefined : data);

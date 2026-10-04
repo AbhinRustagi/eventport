@@ -1,0 +1,59 @@
+{
+  "name": "eventport",
+  "version": "0.1.0",
+  "description": "Typed, composable adapters for AI event streams.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "docs"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./openi": {
+      "types": "./dist/adapters/openi.d.ts",
+      "import": "./dist/adapters/openi.js"
+    },
+    "./anthropic": {
+      "types": "./dist/adapters/anthropic.d.ts",
+      "import": "./dist/adapters/anthropic.js"
+    },
+    "./agui": {
+      "types": "./dist/adapters/agui.d.ts",
+      "import": "./dist/adapters/agui.js"
+    },
+    "./ai-sdk": {
+      "types": "./dist/adapters/ai-sdk.d.ts",
+      "import": "./dist/adapters/ai-sdk.js"
+    },
+    "./langgraph": {
+      "types": "./dist/adapters/langgraph.d.ts",
+      "import": "./dist/adapters/langgraph.js"
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "prepack": "pnpm run build"
+  },
+  "devDependencies": {
+    "@ag-ui/core": "1.0.1",
+    "@anthropic-ai/sdk": "0.131.0",
+    "@langchain/core": "1.2.14",
+    "@langchain/langgraph-sdk": "1.12.0",
+    "ai": "7.0.127",
+    "openai": "7.27.0",
+    "rollup": "4.64.0",
+    "rollup-plugin-dts": "6.5.1",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@eventport/playground",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "example": "node convert.mjs"
+  },
+  "dependencies": {
+    "eventport": "workspace:*"
+  }
+}
