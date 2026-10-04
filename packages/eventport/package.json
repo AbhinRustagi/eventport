@@ -43,7 +43,9 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
-    "prepack": "pnpm run build"
+    "prepack": "pnpm run build",
+    "test": "pnpm build && node --test test/*.test.mjs && pnpm test:types && node --test test/package/*.test.mjs",
+    "test:types": "tsc -p test/tsconfig.json"
   },
   "devDependencies": {
     "@ag-ui/core": "1.0.1",

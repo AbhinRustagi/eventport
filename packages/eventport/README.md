@@ -29,6 +29,7 @@ Open <http://127.0.0.1:4321>. The workbench uses local fixtures, lets you edit n
 
 ```sh
 pnpm check
+pnpm test
 pnpm build
 pnpm example
 ```
@@ -149,3 +150,9 @@ Text is streamed incrementally. Active tool arguments are buffered for JSON vali
 - [Bootstrap verification](docs/verification.md)
 
 MIT © 2026 Eventport contributors.
+
+## Tests
+
+Run `pnpm test` from the workspace root. The suite uses Node's built-in test runner with no additional test framework dependency. It covers all 30 source/destination combinations across stored arrays, async iterables, readable streams and SSE; middleware, cancellation, malformed lifecycles, reasoning, approvals and parallel tool calls; TypeScript inference and rejected usage; and installation of the packed library in a temporary consumer without SDK dependencies.
+
+Fixtures are local, minimal native payloads, not recorded live-provider sessions. Tests make no provider calls. The package-consumer check uses pnpm's offline mode and removes its temporary directory when done. `pnpm --filter eventport test:types` runs only consumer typing checks against the current build.
