@@ -8,9 +8,9 @@ import { responses } from "eventport/openai";
 import { agUI } from "eventport/agui";
 
 return eventport
-  .convert(upstream)
   .from(responses())
   .to(agUI({ threadId, runId }))
+  .convert(upstream)
   .toResponse();
 ```
 
@@ -44,14 +44,14 @@ pnpm example
 
 ## Adapters
 
-| Import | Factory | Input | Output |
-| --- | --- | --- | --- |
-| `eventport/openai` | `chatCompletions()` | Chat Completions chunks, choice 0 | Chat Completions chunks |
-| `eventport/openai` | `responses()` | Responses events | Responses-style text/function-call event subset |
-| `eventport/anthropic` | `anthropic()` | Messages streaming events | Messages streaming events |
-| `eventport/agui` | `agUI({ threadId, runId })` | AG-UI events | AG-UI events |
-| `eventport/vercel` | `aiSDK()` | UIMessage stream chunks | UIMessage stream chunks |
-| `eventport/langgraph` | `langGraph()` | SDK `{ event, data }` envelopes | — |
+| Import                | Factory                     | Input                             | Output                                          |
+| --------------------- | --------------------------- | --------------------------------- | ----------------------------------------------- |
+| `eventport/openai`    | `chatCompletions()`         | Chat Completions chunks, choice 0 | Chat Completions chunks                         |
+| `eventport/openai`    | `responses()`               | Responses events                  | Responses-style text/function-call event subset |
+| `eventport/anthropic` | `anthropic()`               | Messages streaming events         | Messages streaming events                       |
+| `eventport/agui`      | `agUI({ threadId, runId })` | AG-UI events                      | AG-UI events                                    |
+| `eventport/vercel`    | `aiSDK()`                   | UIMessage stream chunks           | UIMessage stream chunks                         |
+| `eventport/langgraph` | `langGraph()`               | SDK `{ event, data }` envelopes   | —                                               |
 
 `langGraph({ input: "tuples" })` accepts named stream tuples (`[mode, data]`) from a graph using multiple stream modes. `updates`, `streamEvents()` callbacks, protocol-v2 channels and subgraph triple-tuples are not implemented. See the coverage document before connecting a graph.
 
@@ -63,9 +63,9 @@ pnpm example
 
 ```ts
 const output = await eventport
-  .convert(storedEvents)
   .from(responses())
   .to(agUI({ threadId, runId }))
+  .convert(storedEvents)
   .collect();
 ```
 
@@ -87,19 +87,17 @@ Keys and callback payloads follow the adapter. Middleware operates on native sou
 
 ```ts
 const stream = eventport
-  .convert(upstream)
-  .from(responses(), {
-    middleware: {
-      "response.output_text.delta": async event => ({
-        ...event,
-        delta: event.delta.toUpperCase(),
-      }),
-    },
-    observe: event => console.debug("source", event.type),
+  .from(responses())
+  .middleware({
+    "response.output_text.delta": async (event) => ({
+      ...event,
+      delta: event.delta.toUpperCase(),
+    }),
   })
-  .to(agUI({ threadId, runId }), {
-    observe: event => console.debug("destination", event.type),
-  });
+  .observe((event) => console.debug("source", event.type))
+  .to(agUI({ threadId, runId }))
+  .observe((event) => console.debug("destination", event.type))
+  .convert(upstream);
 ```
 
 Return an event to keep/replace it, an array to expand it, or `null` to drop it. Returning `undefined` is rejected by TypeScript and at runtime. Callbacks and observers are awaited in order. Observer return values do not affect output; exceptions terminate conversion. Source observation sees events after source middleware; destination observation sees events after destination middleware.
@@ -110,15 +108,57 @@ Adapter types come directly from the upstream packages, installed only as pinned
 
 Middleware keys cover the upstream event unions, including events that do not yet have a conversion mapping. Unsupported variants are diagnosed at runtime. LangGraph's omitted chunk fields are derived from LangChain's `ToolCallChunk`; the `messages-tuple` envelope alias and Anthropic's transport `ping` are explicit compatibility additions. This does not replace application input validation.
 
+## Overrides
+
+Use `.overrides()` after `.to()` to replace the destination events emitted for a source event. Keys and callback arguments follow the source adapter; return values follow the destination adapter.
+
+```ts
+const converter = eventport
+  .from(responses())
+  .to(agUI({ threadId, runId }))
+  .overrides({
+    "response.output_text.delta": (event) => ({
+      type: "CUSTOM",
+      name: "text.fragment",
+      value: { text: event.delta },
+    }),
+  });
+
+const output = converter.convert(upstream);
+```
+
+Return a destination event or array to replace the built-in output, `null` to suppress it, or `eventport.DEFAULT` to keep normal conversion. Async handlers are supported; `undefined` is rejected. Source middleware runs before the override; destination middleware and observers see only the selected output.
+
+The built-in decoder and encoder still update their state. An explicit replacement handles unsupported-event diagnostics for that source event, but does not bypass malformed lifecycle errors. Finalization output is not overridden. Replacements do not update the encoder's stored content or IDs, so later snapshots still reflect the original conversion. Your replacement must keep the destination sequence valid, including any start/end events produced by the same source event.
+
+## Reusable configuration
+
+`.from()` creates a source builder; `.to()` selects the destination. `.middleware()` and `.observe()` apply to the selected side at that point. Configuration methods return new builders; they do not mutate earlier configurations. Repeated middleware/override calls merge handlers, with the newest handler winning for the same key; repeated `.observe()` calls replace the observer for that side.
+
+```ts
+const converter = eventport.from(responses()).to(aiSDK());
+const upperCase = converter.middleware({
+  "text-delta": (event) => ({ ...event, delta: event.delta.toUpperCase() }),
+});
+
+const original = converter.convert(upstream);
+const replay = upperCase.convert(storedEvents);
+```
+
+Each `.convert(input, { signal })` creates fresh decoder and encoder state, and returns a lazy, single-use run. Builders can be reused concurrently; mutable state captured inside your own callbacks remains your responsibility. Keep run-specific adapter options such as AG-UI IDs distinct when separate runs need distinct identities.
+
+The earlier `eventport.convert(input).from(source).to(target)` entry point remains available for compatibility, but is deprecated. New code should configure the converter first.
+
 ## Unsupported events
 
 The default is to throw `UnsupportedEventError`. Explicitly allow dropping when appropriate:
 
 ```ts
-const stream = eventport.convert(upstream)
+const stream = eventport
   .from(responses())
   .to(chatCompletions())
-  .onUnsupported(diagnostic => {
+  .convert(upstream)
+  .onUnsupported((diagnostic) => {
     console.warn(diagnostic.adapter, diagnostic.stage, diagnostic.reason);
     return "drop"; // Or "error". A decision is required.
   });
@@ -130,9 +170,9 @@ AG-UI and AI SDK can carry some unmapped data using `RAW` / custom data events. 
 
 ```ts
 const stream = eventport
-  .convert(upstream, { signal: request.signal })
   .from(responses())
-  .to(aiSDK());
+  .to(aiSDK())
+  .convert(upstream, { signal: request.signal });
 
 return stream.toResponse({ headers: { "X-Request-Id": requestId } });
 ```

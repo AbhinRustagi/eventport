@@ -26,7 +26,7 @@ Open http://127.0.0.1:4321. Choose a protocol in the chat header. `EVENTPORT_ADA
 
 Every path ends in Eventport's `aiSDK()` target. The server forwards the conversation's text history on each request, so follow-up messages preserve context. LangGraph uses stateless runs with the full history. This playground does not implement tool execution, approval replies, attachments, or durable conversation storage.
 
-The browser sends chat messages and the selected protocol to `/api/chat`. The route validates the selection and opens the provider stream and uses `eventport.convert(upstream).from(adapter).to(aiSDK())`. It returns the converted stream through the AI SDK response wrapper for standard error handling. The protocol dropdown is disabled during a response. Changing it preserves the conversation; subsequent requests use the new adapter. No event inspector or debug events are exposed in the chat UI.
+The browser sends chat messages and the selected protocol to `/api/chat`. The route validates the selection and opens the provider stream and uses `eventport.from(adapter).to(aiSDK()).convert(upstream)`. It returns the converted stream through the AI SDK response wrapper for standard error handling. The protocol dropdown is disabled during a response. Changing it preserves the conversation; subsequent requests use the new adapter. No event inspector or debug events are exposed in the chat UI.
 
 Conversations can be created and switched in the default sidebar. They are in memory and disappear when the page reloads.
 

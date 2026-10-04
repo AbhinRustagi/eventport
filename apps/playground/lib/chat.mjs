@@ -187,9 +187,9 @@ export async function openSource({
     return {
       adapter,
       upstream: eventport
-        .convert(upstream, { signal })
         .from(responses())
-        .to(adapter),
+        .to(adapter)
+        .convert(upstream, { signal }),
     };
   }
   return { adapter: responses(), upstream };
@@ -197,9 +197,9 @@ export async function openSource({
 
 export function convertedResponse({ upstream, adapter, signal }) {
   const converted = eventport
-    .convert(upstream, { signal })
     .from(adapter)
-    .to(aiSDK());
+    .to(aiSDK())
+    .convert(upstream, { signal });
 
   // The standard AI SDK response wrapper handles stream errors for assistant-ui.
   const stream = createUIMessageStream({
