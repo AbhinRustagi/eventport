@@ -3,3 +3,8 @@ dist/
 .DS_Store
 *.tgz
 .Codex/plans/
+.next/
+*.tsbuildinfo
+
+.env*
+!.env.example

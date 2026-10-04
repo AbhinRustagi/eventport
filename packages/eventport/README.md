@@ -133,7 +133,7 @@ return stream.toResponse({ headers: { "X-Request-Id": requestId } });
 
 Pass the **same abort signal into your provider SDK call**. Eventport cancels a supplied `ReadableStream` reader and closes iterable sources; it cannot stop a provider's hidden network request without the SDK's cooperation. Backpressure controls event consumption. In-flight application callbacks may finish after cancellation.
 
-SSE framing is selected by the destination, including the AI SDK protocol header and the Chat Completions/AI SDK `[DONE]` marker. Conversion failures error the response body; after headers are sent they cannot change the HTTP status. `apps/playground/server.mjs` includes a working local `POST /api/convert` route for supplied event arrays.
+SSE framing is selected by the destination, including the AI SDK protocol header and the Chat Completions/AI SDK `[DONE]` marker. Conversion failures error the response body; after headers are sent they cannot change the HTTP status. `apps/playground/app/api/chat/route.ts` demonstrates live provider streams converted to the AI SDK wire protocol for assistant-ui.
 
 Provider encoders synthesize IDs and use `model: "unknown"` unless configured with `responses({ model })`, `anthropic({ model })`, or `chatCompletions({ model })`. They do not claim that the destination provider generated the content. Missing usage fields are currently represented as zero when a destination requires them; do not use translated usage as authoritative billing data.
 

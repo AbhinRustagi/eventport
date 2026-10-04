@@ -7,11 +7,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm --filter eventport build",
-    "check": "pnpm --filter eventport check",
-    "dev": "pnpm build && pnpm --filter @eventport/playground dev",
-    "example": "pnpm build && pnpm --filter @eventport/playground example",
+    "build": "pnpm -r --if-present build",
+    "check": "pnpm --filter eventport build && pnpm -r --if-present check",
+    "dev": "pnpm --filter eventport build && pnpm --filter @eventport/playground dev",
+    "example": "pnpm --filter eventport build && pnpm --filter @eventport/playground example",
     "pack:lib": "pnpm --filter eventport pack",
-    "test": "pnpm --filter eventport test"
+    "test": "pnpm --filter eventport test && pnpm --filter @eventport/playground test"
   }
 }
