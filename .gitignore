@@ -10,3 +10,5 @@ dist/
 !.env.example
 
 **/.vitepress/cache/
+
+packages/eventport/.build-*/

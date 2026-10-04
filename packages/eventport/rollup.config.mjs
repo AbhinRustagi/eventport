@@ -4,13 +4,15 @@ import { isBuiltin } from "node:module";
 import ts from "typescript";
 import { dts } from "rollup-plugin-dts";
 
+const output = process.env.EVENTPORT_BUILD_DIR || "dist";
+
 // Bundle all reachable SDK declarations; consumers install only Eventport.
 export default {
   external: (id) =>
     isBuiltin(id) ||
     /(?:^|\/)(?:node-fetch|undici|undici-types)(?:[./]|$)/.test(id),
   input: {
-    index: "dist/index.d.ts",
+    index: `${output}/index.d.ts`,
     ...Object.fromEntries(
       [
         "openai",
@@ -21,11 +23,11 @@ export default {
         "vercel",
         "ai-sdk",
         "langgraph",
-      ].map((name) => [`adapters/${name}`, `dist/adapters/${name}.d.ts`]),
+      ].map((name) => [`adapters/${name}`, `${output}/adapters/${name}.d.ts`]),
     ),
   },
   output: {
-    dir: "dist",
+    dir: output,
     format: "es",
     chunkFileNames: "types/[name]-[hash].d.ts",
   },

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev --hostname 127.0.0.1 --port 4321",
+    "dev": "pnpm --filter eventport build && next dev --hostname 127.0.0.1 --port 4321",
     "example": "node convert.mjs",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 4321",
