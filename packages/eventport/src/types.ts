@@ -97,11 +97,15 @@ export interface Encoder<E> {
 export interface SourceAdapter<E> {
   readonly name: string;
   key(event: E): string;
+  /** Distinguish array-valued native events from middleware event lists. */
+  isEvent?(value: unknown): value is E;
   decoder(context: Context): Decoder<E>;
 }
 export interface TargetAdapter<E> {
   readonly name: string;
   key(event: E): string;
+  /** Distinguish array-valued native events from middleware event lists. */
+  isEvent?(value: unknown): value is E;
   encoder(context: Context): Encoder<E>;
   wire: {
     headers?: Record<string, string>;

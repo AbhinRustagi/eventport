@@ -97,7 +97,7 @@ async function* read<T>(
 
 async function apply<E>(
   event: E,
-  adapter: { key(event: E): string },
+  adapter: Pick<SourceAdapter<E>, "key" | "isEvent">,
   hooks: Hooks<E>,
 ): Promise<readonly E[]> {
   const handlers = hooks.middleware as
@@ -110,7 +110,11 @@ async function apply<E>(
       "Middleware must return an event, an array, or null; received undefined.",
     );
   const events =
-    output === null ? [] : Array.isArray(output) ? output : [output as E];
+    output === null
+      ? []
+      : Array.isArray(output) && !adapter.isEvent?.(output)
+        ? output
+        : [output as E];
   for (const value of events) await hooks.observe?.(value);
   return events;
 }

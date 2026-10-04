@@ -45,6 +45,11 @@ export function langGraph(
 ): SourceAdapter<LangGraphEvent | LangGraphTuple> {
   return {
     name: "langgraph",
+    isEvent: (value): value is LangGraphEvent | LangGraphTuple =>
+      options.input === "tuples" &&
+      Array.isArray(value) &&
+      value.length === 2 &&
+      typeof value[0] === "string",
     key: (e) => (Array.isArray(e) ? e[0] : e.event),
     decoder(context) {
       const life = new Lifecycle();
