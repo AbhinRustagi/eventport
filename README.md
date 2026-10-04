@@ -4,7 +4,7 @@ Typed, composable adapters for AI event streams. Independent project. MIT licens
 
 ```ts
 import { eventport } from "eventport";
-import { responses } from "eventport/responses";
+import { responses } from "eventport/openi";
 import { agUI } from "eventport/agui";
 
 return eventport
@@ -39,8 +39,8 @@ The package has not been published. Use this checkout or `npm pack` to install i
 
 | Import | Factory | Input | Output |
 | --- | --- | --- | --- |
-| `eventport/chat-completions` | `chatCompletions()` | Chat Completions chunks, choice 0 | Chat Completions chunks |
-| `eventport/responses` | `responses()` | Responses events | Responses-style text/function-call event subset |
+| `eventport/openi` | `chatCompletions()` | Chat Completions chunks, choice 0 | Chat Completions chunks |
+| `eventport/openi` | `responses()` | Responses events | Responses-style text/function-call event subset |
 | `eventport/anthropic` | `anthropic()` | Messages streaming events | Messages streaming events |
 | `eventport/agui` | `agUI({ threadId, runId })` | AG-UI events | AG-UI events |
 | `eventport/ai-sdk` | `aiSDK()` | UIMessage stream chunks | UIMessage stream chunks |

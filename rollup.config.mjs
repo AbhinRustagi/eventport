@@ -13,6 +13,7 @@ export default {
     index: "dist/index.d.ts",
     ...Object.fromEntries(
       [
+        "openi",
         "chat-completions",
         "responses",
         "anthropic",

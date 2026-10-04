@@ -19,13 +19,9 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./chat-completions": {
-      "types": "./dist/adapters/chat-completions.d.ts",
-      "import": "./dist/adapters/chat-completions.js"
-    },
-    "./responses": {
-      "types": "./dist/adapters/responses.d.ts",
-      "import": "./dist/adapters/responses.js"
+    "./openi": {
+      "types": "./dist/adapters/openi.d.ts",
+      "import": "./dist/adapters/openi.js"
     },
     "./anthropic": {
       "types": "./dist/adapters/anthropic.d.ts",

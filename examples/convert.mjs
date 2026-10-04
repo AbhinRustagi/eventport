@@ -1,5 +1,5 @@
 import { eventport } from '../dist/index.js';
-import { responses } from '../dist/adapters/responses.js';
+import { responses } from '../dist/adapters/openi.js';
 import { agUI } from '../dist/adapters/agui.js';
 import { samples } from '../playground/samples.mjs';
 
