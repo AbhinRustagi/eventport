@@ -38,3 +38,7 @@ jobs:
         run: pnpm check
       - name: Build and run regression, type and package checks
         run: pnpm test
+      - name: Build the Next.js playground
+        run: pnpm --filter @eventport/playground build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
