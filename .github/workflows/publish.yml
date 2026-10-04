@@ -1,0 +1,60 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish eventport
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a release commit from main
+        run: git merge-base --is-ancestor HEAD origin/main
+      - name: Validate release tag and distribution channel
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: node .github/scripts/release.mjs
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Use an OIDC-capable npm CLI
+        run: npm install --global npm@11
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build and pack only the public library
+        run: |
+          mkdir -p "$RUNNER_TEMP/eventport-release"
+          pnpm --filter eventport pack --pack-destination "$RUNNER_TEMP/eventport-release"
+      - name: Publish with trusted publishing and provenance
+        env:
+          NPM_DIST_TAG: ${{ steps.release.outputs.dist-tag }}
+        run: |
+          archives=("$RUNNER_TEMP/eventport-release"/*.tgz)
+          test "${#archives[@]}" -eq 1
+          npm publish "${archives[0]}" --ignore-scripts --access public --provenance --tag "$NPM_DIST_TAG" --registry=https://registry.npmjs.org

@@ -20,3 +20,5 @@ Open http://127.0.0.1:4321. Run `pnpm example` for a terminal conversion or `pnp
 Provider SDKs remain library development dependencies. Published consumers receive bundled types and zero runtime dependencies.
 
 `pnpm test` builds the library, runs the Node regression suite, checks middleware types, and verifies an offline-installed package consumer. No API keys or live provider requests are needed.
+
+GitHub Actions checks pull requests and `main`. Publishing a GitHub release triggers npm publishing after the checks pass; see [release setup and instructions](.github/RELEASING.md).

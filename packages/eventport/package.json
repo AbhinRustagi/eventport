@@ -57,5 +57,18 @@
     "rollup": "4.64.0",
     "rollup-plugin-dts": "6.5.1",
     "typescript": "5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AbhinRustagi/eventport.git",
+    "directory": "packages/eventport"
+  },
+  "homepage": "https://github.com/AbhinRustagi/eventport#readme",
+  "bugs": {
+    "url": "https://github.com/AbhinRustagi/eventport/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   }
 }
