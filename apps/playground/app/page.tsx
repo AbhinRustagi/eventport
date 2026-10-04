@@ -1,4 +1,5 @@
-import { Playground } from "../components/playground";
+import { Assistant } from "@/components/assistant";
+
 export default function Page() {
-  return <Playground />;
+  return <Assistant />;
 }

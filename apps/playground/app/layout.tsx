@@ -3,9 +3,8 @@ import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const metadata: Metadata = {
-  title: "Eventport — Protocol playground",
-  description:
-    "Explore AI protocol conversion in a streaming assistant-ui chat.",
+  title: "Assistant",
+  description: "An assistant-ui chat powered by Eventport.",
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (

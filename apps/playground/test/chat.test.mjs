@@ -66,9 +66,10 @@ for (const protocol of Object.keys(adapters))
         .join(""),
       "Hello from Eventport.",
     );
-    assert.ok(traces.some((t) => t.stage === "source"));
-    assert.ok(
-      traces.some((t) => t.stage === "output" && t.event.type === "text-delta"),
+    assert.equal(
+      traces.length,
+      0,
+      "No inspector events are sent to the chat client",
     );
     assert.equal(
       final.parts.filter((p) => p.type === "data-eventport-trace").length,
@@ -144,9 +145,15 @@ test("validation preserves history and rejects invalid roles, attachments and em
     })),
   };
   assert.deepEqual(parseChat(body).messages, messages);
+  assert.equal(
+    parseChat({ ...body, protocol: "anthropic" }).protocol,
+    "responses",
+    "Clients cannot select the server provider",
+  );
+  assert.equal(parseChat(body, "anthropic").protocol, "anthropic");
+  assert.throws(() => parseChat(body, "bad"), /EVENTPORT_ADAPTER/);
   for (const invalid of [
     null,
-    { ...body, protocol: "bad" },
     {
       ...body,
       messages: [

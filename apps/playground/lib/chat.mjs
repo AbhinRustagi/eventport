@@ -22,17 +22,16 @@ export class RequestError extends Error {
   }
 }
 
-export function parseChat(body) {
+export function parseChat(body, protocol = "responses") {
+  if (!Object.hasOwn(protocols, protocol))
+    throw new RequestError("Unsupported EVENTPORT_ADAPTER configuration.", 503);
   if (
     !body ||
-    !Object.hasOwn(protocols, body.protocol) ||
     !Array.isArray(body.messages) ||
     !body.messages.length ||
     body.messages.length > 100
   ) {
-    throw new RequestError(
-      "Choose a supported adapter and include 1–100 messages.",
-    );
+    throw new RequestError("Include 1–100 messages.");
   }
   const messages = body.messages.map((message) => {
     if (
@@ -70,7 +69,7 @@ export function parseChat(body) {
   });
   if (messages.at(-1).role !== "user")
     throw new RequestError("The last message must be from the user.");
-  return { protocol: body.protocol, messages };
+  return { protocol, messages };
 }
 
 function required(env, name) {
@@ -189,54 +188,22 @@ export async function openSource({
   return { adapter: responses(), upstream };
 }
 
-export function convertedResponse({ protocol, upstream, adapter, signal }) {
-  const pending = [];
-  const record = (stage, event) => {
-    // Bound trace buffering even when upstream emits many non-rendering events.
-    if (
-      event?.type === "error" ||
-      event?.event === "error" ||
-      event?.type === "response.failed"
-    )
-      event = {
-        type: "error",
-        message: "The upstream model reported an error.",
-      };
-    if (pending.length < 100)
-      pending.push({
-        type: "data-eventport-trace",
-        transient: true,
-        data: { stage, protocol, event },
-      });
-  };
+export function convertedResponse({ upstream, adapter, signal }) {
   const converted = eventport
     .convert(upstream, { signal })
-    .from(adapter, { observe: (event) => record("source", event) })
-    .to(aiSDK())
-    .onUnsupported((diagnostic) => {
-      record("unsupported", {
-        adapter: diagnostic.adapter,
-        reason: diagnostic.reason,
-      });
-      return "drop";
-    });
+    .from(adapter)
+    .to(aiSDK());
+
+  // The standard AI SDK response wrapper handles stream errors for assistant-ui.
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
       for await (const event of converted) {
-        for (const trace of pending.splice(0)) writer.write(trace);
-        // Do not expose raw upstream error strings to the browser.
-        const output =
+        writer.write(
           event.type === "error"
             ? { ...event, errorText: "The model stream failed. Please retry." }
-            : event;
-        writer.write(output);
-        writer.write({
-          type: "data-eventport-trace",
-          transient: true,
-          data: { stage: "output", protocol, event: output },
-        });
+            : event,
+        );
       }
-      for (const trace of pending.splice(0)) writer.write(trace);
     },
     onError: () =>
       signal?.aborted
@@ -245,6 +212,6 @@ export function convertedResponse({ protocol, upstream, adapter, signal }) {
   });
   return createUIMessageStreamResponse({
     stream,
-    headers: { "Cache-Control": "no-store", "X-Eventport-Source": protocol },
+    headers: { "Cache-Control": "no-store" },
   });
 }

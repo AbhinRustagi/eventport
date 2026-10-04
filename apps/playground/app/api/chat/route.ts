@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     } catch {
       throw new RequestError("Expected a JSON request.");
     }
-    const input = parseChat(body);
+    const input = parseChat(body, process.env.EVENTPORT_ADAPTER || "responses");
     const signal = AbortSignal.any([
       request.signal,
       AbortSignal.timeout(120_000),

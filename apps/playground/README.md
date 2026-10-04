@@ -1,6 +1,6 @@
 # Eventport playground
 
-A Next.js app using the default [assistant-ui Thread](https://www.assistant-ui.com/elements/thread) and its generated components/styles. Choose a source adapter, send a message, and inspect native events alongside the converted Vercel UI stream.
+A standard Next.js [assistant-ui](https://www.assistant-ui.com/) chat with its default Thread and conversation list. Eventport converts the model stream on the server; the client uses the normal assistant-ui AI SDK runtime.
 
 ## Run
 
@@ -13,20 +13,22 @@ cp apps/playground/.env.example apps/playground/.env.local
 pnpm dev
 ```
 
-Open http://127.0.0.1:4321. There are no simulated responses or fallback models. Missing configuration produces an error in the chat. Keys are server-only and ignored by Git. Model names can be overridden in `.env.local`.
+Open http://127.0.0.1:4321. Set `EVENTPORT_ADAPTER` on the server to choose an adapter (defaults to `responses`). There are no simulated responses or fallback models. Missing configuration produces an error in the chat. Keys are server-only and ignored by Git. Model names can be overridden in `.env.local`.
 
-| Selection          | Live source                                                            | Configuration                                                      |
+| Adapter            | Live source                                                            | Configuration                                                      |
 | ------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| OpenAI Responses   | OpenAI Responses API                                                   | `OPENAI_API_KEY`, optional `OPENAI_MODEL`                          |
-| Chat Completions   | OpenAI Chat Completions API                                            | Same                                                               |
-| Anthropic Messages | Anthropic Messages API                                                 | `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL`                    |
-| AG-UI              | OpenAI Responses → Eventport AG-UI encoder → AG-UI decoder             | OpenAI configuration                                               |
-| Vercel AI SDK      | AI SDK `streamText` with OpenAI                                        | OpenAI configuration                                               |
-| LangGraph          | A deployed agent accepting `{ messages }` and streaming message tuples | `LANGGRAPH_API_URL`, `LANGGRAPH_API_KEY`, `LANGGRAPH_ASSISTANT_ID` |
+| `responses`        | OpenAI Responses API                                                   | `OPENAI_API_KEY`, optional `OPENAI_MODEL`                          |
+| `chat-completions` | OpenAI Chat Completions API                                            | Same                                                               |
+| `anthropic`        | Anthropic Messages API                                                 | `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL`                    |
+| `agui`             | OpenAI Responses → Eventport AG-UI encoder → AG-UI decoder             | OpenAI configuration                                               |
+| `ai-sdk`           | AI SDK `streamText` with OpenAI                                        | OpenAI configuration                                               |
+| `langgraph`        | A deployed agent accepting `{ messages }` and streaming message tuples | `LANGGRAPH_API_URL`, `LANGGRAPH_API_KEY`, `LANGGRAPH_ASSISTANT_ID` |
 
-Every path ends in Eventport's `aiSDK()` target. The server forwards the conversation's text history on each request, so switching adapters preserves context. LangGraph uses stateless runs with the full history. This playground does not implement tool execution, approval replies, attachments, or durable conversation storage.
+Every path ends in Eventport's `aiSDK()` target. The server forwards the conversation's text history on each request, so follow-up messages preserve context. LangGraph uses stateless runs with the full history. This playground does not implement tool execution, approval replies, attachments, or durable conversation storage.
 
-The event inspector receives transient data chunks alongside the response. These do not become chat messages. It displays up to 500 recent events; unsupported events are explicitly reported before being dropped. AG-UI is a conversion path here, not a separate model provider.
+The browser sends standard chat messages to `/api/chat`. The route opens the configured provider stream and uses `eventport.convert(upstream).from(adapter).to(aiSDK())`. It returns the converted stream through the AI SDK response wrapper for standard error handling. No protocol selection, event inspection, or debug events are exposed in the chat UI.
+
+Conversations can be created and switched in the default sidebar. They are in memory and disappear when the page reloads.
 
 The API validates request size and message shape, limits output tokens, forwards cancellation, and times out after 120 seconds. Provider exceptions are sanitized. This local playground has no user authentication or distributed rate limiting; add those before exposing a server-funded endpoint publicly.
 
