@@ -1,5 +1,5 @@
 import { eventport } from '/dist/index.js';
-import { chatCompletions, responses } from '/dist/adapters/openi.js';
+import { chatCompletions, responses } from '/dist/adapters/openai.js';
 import { anthropic } from '/dist/adapters/anthropic.js';
 import { agUI } from '/dist/adapters/agui.js';
 import { aiSDK } from '/dist/adapters/ai-sdk.js';

@@ -19,9 +19,9 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./openi": {
-      "types": "./dist/adapters/openi.d.ts",
-      "import": "./dist/adapters/openi.js"
+    "./openai": {
+      "types": "./dist/adapters/openai.d.ts",
+      "import": "./dist/adapters/openai.js"
     },
     "./anthropic": {
       "types": "./dist/adapters/anthropic.d.ts",

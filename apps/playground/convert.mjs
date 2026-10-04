@@ -1,5 +1,5 @@
 import { eventport } from 'eventport';
-import { responses } from 'eventport/openi';
+import { responses } from 'eventport/openai';
 import { agUI } from 'eventport/agui';
 import { samples } from './samples.mjs';
 

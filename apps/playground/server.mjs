@@ -5,7 +5,7 @@ import { resolve, extname } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { eventport } from 'eventport';
-import { chatCompletions, responses } from 'eventport/openi';
+import { chatCompletions, responses } from 'eventport/openai';
 import { anthropic } from 'eventport/anthropic';
 import { agUI } from 'eventport/agui';
 import { aiSDK } from 'eventport/ai-sdk';
