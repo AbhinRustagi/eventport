@@ -16,7 +16,15 @@ return eventport
 
 **Bootstrap release:** six source adapters, five destination adapters, zero runtime dependencies. This is a supported subset of each protocol, not a lossless universal converter or a replacement for an agent runtime. See [coverage](docs/coverage.md).
 
-## Run locally
+## Installation
+
+```sh
+pnpm add eventport
+```
+
+The root import does not register adapters: import only the subpaths you use. ESM JavaScript and declarations ship together; no provider SDK is installed at runtime.
+
+## Run the examples locally
 
 Requires Node.js 22+ and pnpm 10. Run these commands from the workspace root.
 
@@ -33,8 +41,6 @@ pnpm test
 pnpm build
 pnpm example
 ```
-
-The package has not been published. Use this checkout or `pnpm pack:lib` to install it locally. The root import does not register adapters: import only the subpaths you use. ESM JavaScript and declarations ship together; no provider SDK is installed at runtime.
 
 ## Adapters
 

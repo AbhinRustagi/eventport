@@ -17,22 +17,13 @@ Your app calls the provider. Eventport converts its decoded events. It does not 
 
 ## Get started
 
-Eventport is not yet published to npm. To try the current package, build a tarball from the repository with Node.js 22+ and pnpm 10:
+Install Eventport in your app:
 
 ```sh
-git clone https://github.com/AbhinRustagi/eventport.git
-cd eventport
-pnpm install
-pnpm pack:lib
+pnpm add eventport
 ```
 
-Install the generated tarball in your app:
-
-```sh
-pnpm add /path/to/eventport/packages/eventport/eventport-0.1.0.tgz
-```
-
-Inside this workspace, use `"eventport": "workspace:*"`. The published format is ESM; adapter SDKs are not required unless your app uses them to call a provider.
+Eventport ships as ESM JavaScript with bundled TypeScript declarations. Import the adapters you need from their subpaths. Provider SDKs are only needed if your app uses them to call a provider.
 
 Here is a complete conversion using recorded AI SDK events:
 
