@@ -10,6 +10,7 @@ export type {
   SourceAdapter,
   TargetAdapter,
   CanonicalEvent,
+  AGUIEvent,
   Middleware,
   Hooks,
   Overrides,

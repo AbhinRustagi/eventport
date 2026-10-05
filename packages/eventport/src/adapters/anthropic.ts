@@ -1,4 +1,12 @@
-import type { Adapter, CanonicalEvent } from "../types.js";
+import type { EventType } from "@ag-ui/core";
+import {
+  usageEvent,
+  metadataEvent,
+  readUsage,
+  readMetadata,
+  finishReason,
+} from "../protocol.js";
+import type { Adapter } from "../types.js";
 import { key, Lifecycle, namedSSE, unsupported } from "../internal.js";
 
 import type {
@@ -54,12 +62,13 @@ export function anthropic(
                   messageId,
                 );
                 if (b.signature)
-                  events.push({
-                    type: "block.metadata",
-                    id,
-                    namespace: "anthropic",
-                    value: { signature: b.signature },
-                  });
+                  events.push(
+                    metadataEvent({
+                      id: id,
+                      namespace: "anthropic",
+                      value: { signature: b.signature },
+                    }),
+                  );
                 return events;
               }
               if (b.type === "tool_use") {
@@ -74,13 +83,21 @@ export function anthropic(
                 return events;
               }
               indexes.set(e.index, { id, kind: "opaque" });
-              return [{ type: "opaque", protocol: "anthropic", payload: e }];
+              return [
+                { type: "RAW" as EventType.RAW, source: "anthropic", event: e },
+              ];
             }
             case "content_block_delta": {
               const b = indexes.get(e.index);
               if (!b) throw new Error("Anthropic delta without block start.");
               if (b.kind === "opaque")
-                return [{ type: "opaque", protocol: "anthropic", payload: e }];
+                return [
+                  {
+                    type: "RAW" as EventType.RAW,
+                    source: "anthropic",
+                    event: e,
+                  },
+                ];
               const d = e.delta;
               if (d.type === "text_delta" && b.kind === "text")
                 return life.delta(b.id, d.text, "text", messageId);
@@ -88,12 +105,11 @@ export function anthropic(
                 return life.delta(b.id, d.thinking, "reasoning", messageId);
               if (d.type === "signature_delta" && b.kind === "reasoning")
                 return [
-                  {
-                    type: "block.metadata",
+                  metadataEvent({
                     id: b.id,
                     namespace: "anthropic",
                     value: { signature: d.signature },
-                  },
+                  }),
                 ];
               if (d.type === "input_json_delta" && b.kind === "tool")
                 return life.toolDelta(b.id, d.partial_json);
@@ -108,7 +124,13 @@ export function anthropic(
               if (!b) throw new Error("Anthropic block stop without start.");
               indexes.delete(e.index);
               return b.kind === "opaque"
-                ? [{ type: "opaque", protocol: "anthropic", payload: e }]
+                ? [
+                    {
+                      type: "RAW" as EventType.RAW,
+                      source: "anthropic",
+                      event: e,
+                    },
+                  ]
                 : b.kind === "tool"
                   ? life.endTool(b.id)
                   : life.endBlock(b.id);
@@ -120,7 +142,11 @@ export function anthropic(
               return [];
             case "message_stop":
               return [
-                { type: "usage", input, output, total: input + output },
+                usageEvent({
+                  input: input,
+                  output: output,
+                  total: input + output,
+                }),
                 ...life.end(reason),
               ];
             case "ping":
@@ -128,7 +154,11 @@ export function anthropic(
             case "error":
               life.ended = true;
               return [
-                { type: "error", message: e.error.message, code: e.error.type },
+                {
+                  type: "RUN_ERROR" as EventType.RUN_ERROR,
+                  message: e.error.message,
+                  code: e.error.type,
+                },
               ];
             default:
               return unsupported(context, e);
@@ -152,13 +182,51 @@ export function anthropic(
       >();
       return {
         async push(e): Promise<AnthropicEvent[]> {
+          const tokenUsage = readUsage(e);
+          if (tokenUsage) {
+            input = tokenUsage.input ?? input;
+            output = tokenUsage.output ?? output;
+            if (e.type !== "RUN_FINISHED") return [];
+          }
+          const metadata = readMetadata(e);
+          if (metadata) {
+            const b = blocks.get(metadata.id);
+            if (
+              b &&
+              b.kind === "reasoning" &&
+              metadata.namespace === "anthropic" &&
+              typeof metadata.value.signature === "string"
+            ) {
+              b.signature = true;
+              return [
+                {
+                  type: "content_block_delta",
+                  index: b.index,
+                  delta: {
+                    type: "signature_delta",
+                    signature: metadata.value.signature,
+                  },
+                },
+              ];
+            }
+            await context.unsupported(
+              e,
+              "Cannot encode this block metadata in Anthropic.",
+            );
+            return [];
+          }
+          if (e.type === "RUN_FINISHED" && e.outcome?.type === "interrupt")
+            await context.unsupported(
+              e,
+              "Target cannot represent interrupted runs.",
+            );
           switch (e.type) {
-            case "run.start":
+            case "RUN_STARTED":
               return [
                 {
                   type: "message_start",
                   message: {
-                    id: e.id,
+                    id: e.runId,
                     type: "message",
                     role: "assistant",
                     model: options.model ?? "unknown",
@@ -182,41 +250,53 @@ export function anthropic(
                   },
                 },
               ];
-            case "block.start": {
+            case "TEXT_MESSAGE_START":
+            case "REASONING_MESSAGE_START": {
               const i = index++;
-              blocks.set(e.id, { index: i, kind: e.kind, signature: false });
+              blocks.set(e.messageId, {
+                index: i,
+                kind: e.type === "TEXT_MESSAGE_START" ? "text" : "reasoning",
+                signature: false,
+              });
               return [
                 {
                   type: "content_block_start",
                   index: i,
                   content_block:
-                    e.kind === "text"
+                    e.type === "TEXT_MESSAGE_START"
                       ? { type: "text", text: "", citations: null }
                       : { type: "thinking", thinking: "", signature: "" },
                 },
               ];
             }
-            case "tool.start": {
+            case "TOOL_CALL_START": {
               const i = index++;
               hasTools = true;
-              blocks.set(e.id, { index: i, kind: "tool", signature: false });
+              blocks.set(e.toolCallId, {
+                index: i,
+                kind: "tool",
+                signature: false,
+              });
               return [
                 {
                   type: "content_block_start",
                   index: i,
                   content_block: {
                     type: "tool_use",
-                    id: e.id,
-                    name: e.name,
+                    id: e.toolCallId,
+                    name: e.toolCallName,
                     caller: { type: "direct" },
                     input: {},
                   },
                 },
               ];
             }
-            case "block.delta":
-            case "tool.delta": {
-              const b = blocks.get(e.id);
+            case "TEXT_MESSAGE_CONTENT":
+            case "REASONING_MESSAGE_CONTENT":
+            case "TOOL_CALL_ARGS": {
+              const b = blocks.get(
+                "toolCallId" in e ? e.toolCallId : e.messageId,
+              );
               if (!b) throw new Error("Delta without block start.");
               return [
                 {
@@ -224,56 +304,29 @@ export function anthropic(
                   index: b.index,
                   delta:
                     b.kind === "tool"
-                      ? { type: "input_json_delta", partial_json: e.text }
+                      ? { type: "input_json_delta", partial_json: e.delta }
                       : b.kind === "text"
-                        ? { type: "text_delta", text: e.text }
-                        : { type: "thinking_delta", thinking: e.text },
+                        ? { type: "text_delta", text: e.delta }
+                        : { type: "thinking_delta", thinking: e.delta },
                 },
               ];
             }
-            case "block.metadata": {
-              const b = blocks.get(e.id);
-              if (
-                b &&
-                b.kind === "reasoning" &&
-                e.namespace === "anthropic" &&
-                typeof e.value.signature === "string"
-              ) {
-                b.signature = true;
-                return [
-                  {
-                    type: "content_block_delta",
-                    index: b.index,
-                    delta: {
-                      type: "signature_delta",
-                      signature: e.value.signature,
-                    },
-                  },
-                ];
-              }
-              await context.unsupported(
-                e,
-                "Cannot encode this block metadata in Anthropic.",
+            case "TEXT_MESSAGE_END":
+            case "REASONING_MESSAGE_END":
+            case "TOOL_CALL_END": {
+              const b = blocks.get(
+                "toolCallId" in e ? e.toolCallId : e.messageId,
               );
-              return [];
-            }
-            case "block.end":
-            case "tool.end": {
-              const b = blocks.get(e.id);
               if (!b) throw new Error("Block end without start.");
               if (b.kind === "reasoning" && !b.signature)
                 await context.unsupported(
                   e,
                   "Anthropic thinking requires a native signature; unsigned reasoning is not replayable to Anthropic.",
                 );
-              blocks.delete(e.id);
+              blocks.delete("toolCallId" in e ? e.toolCallId : e.messageId);
               return [{ type: "content_block_stop", index: b.index }];
             }
-            case "usage":
-              input = e.input ?? input;
-              output = e.output ?? output;
-              return [];
-            case "run.end":
+            case "RUN_FINISHED":
               return [
                 {
                   type: "message_delta",
@@ -282,7 +335,7 @@ export function anthropic(
                       "length",
                       "max_tokens",
                       "max_output_tokens",
-                    ].includes(e.reason)
+                    ].includes(finishReason(e))
                       ? "max_tokens"
                       : hasTools
                         ? "tool_use"
@@ -302,7 +355,7 @@ export function anthropic(
                 },
                 { type: "message_stop" },
               ];
-            case "error":
+            case "RUN_ERROR":
               return [
                 {
                   type: "error",
@@ -313,7 +366,7 @@ export function anthropic(
             default:
               await context.unsupported(
                 e,
-                `Anthropic cannot represent ${e.type}.`,
+                `Anthropic cannot represent ${e.type === "CUSTOM" ? e.name : e.type}.`,
               );
               return [];
           }

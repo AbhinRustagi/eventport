@@ -260,3 +260,217 @@ test("LangGraph tuple middleware distinguishes a single tuple from a list of tup
   assert.equal(text(out), "Hello from again ");
   assert.equal(out.filter((e) => e.type === "tool-input-available").length, 1);
 });
+
+test("every source adapter emits AG-UI at the shared adapter interface", async () => {
+  const context = {
+    unsupported: async () => {
+      throw new Error("Unexpected unsupported event");
+    },
+  };
+  for (const [name, events] of Object.entries(samples)) {
+    const decoder = adapters[name]().decoder(context);
+    const output = [];
+    for (const event of events) output.push(...(await decoder.push(event)));
+    output.push(...(await decoder.finish()));
+    assert.ok(
+      output.every((event) => /^[A-Z_]+$/.test(event.type)),
+      name,
+    );
+    const start = output.find((event) => event.type === "RUN_STARTED");
+    const end = output.at(-1);
+    assert.equal(end.type, "RUN_FINISHED", name);
+    assert.equal(end.runId, start.runId, name);
+    assert.equal(end.threadId, start.threadId, name);
+    assert.ok(
+      output.some((event) => event.type === "TEXT_MESSAGE_CONTENT"),
+      name,
+    );
+    assert.ok(
+      output.some((event) => event.type === "TOOL_CALL_ARGS"),
+      name,
+    );
+  }
+});
+
+test("AG-UI passthrough retains native fields and protocol-only events", async () => {
+  const events = [
+    {
+      type: "RUN_STARTED",
+      threadId: "thread_demo",
+      runId: "run_demo",
+      protocolVersion: "1.0",
+      parentRunId: "parent",
+      metadata: { app: "test" },
+    },
+    {
+      type: "MESSAGES_SNAPSHOT",
+      messages: [{ id: "u", role: "user", content: "Hello" }],
+    },
+    {
+      type: "ACTIVITY_SNAPSHOT",
+      messageId: "a",
+      activityType: "progress",
+      content: { percent: 50 },
+    },
+    { type: "STATE_SNAPSHOT", snapshot: { count: 1 } },
+    {
+      type: "STATE_DELTA",
+      delta: [{ op: "replace", path: "/count", value: 2 }],
+    },
+    {
+      type: "TEXT_MESSAGE_START",
+      messageId: "m",
+      role: "assistant",
+      timestamp: 123,
+      metadata: { provider: "native" },
+    },
+    {
+      type: "TEXT_MESSAGE_CONTENT",
+      messageId: "m",
+      delta: "Hello",
+      rawEvent: { original: true },
+    },
+    { type: "TEXT_MESSAGE_END", messageId: "m" },
+    { type: "RAW", source: "provider", event: { opaque: true } },
+    { type: "CUSTOM", name: "application.event", value: { count: 1 } },
+    {
+      type: "RUN_FINISHED",
+      threadId: "thread_demo",
+      runId: "run_demo",
+      result: { ok: true },
+      usage: [{ inputTokens: 2, outputTokens: 3 }],
+      outcome: { type: "success" },
+    },
+  ];
+  const output = await eventport
+    .from(adapters.agui())
+    .to(adapters.agui())
+    .convert(events)
+    .collect();
+  assert.deepEqual(output, events);
+  await assert.rejects(
+    () =>
+      eventport.from(adapters.agui()).to(responses()).convert(events).collect(),
+    /MESSAGES_SNAPSHOT/,
+  );
+});
+
+test("AG-UI terminal usage reaches provider output", async () => {
+  const events = structuredClone(samples.agui);
+  events.at(-1).usage = [
+    { provider: "one", inputTokens: 10, outputTokens: 4 },
+    { provider: "two", inputTokens: 2, outputTokens: 3, totalTokens: 5 },
+  ];
+  const output = await eventport
+    .from(adapters.agui())
+    .to(responses())
+    .convert(events)
+    .collect();
+  assert.equal(output.at(-1).response.usage.input_tokens, 12);
+  assert.equal(output.at(-1).response.usage.output_tokens, 7);
+  assert.equal(output.at(-1).response.usage.total_tokens, 19);
+});
+
+test("reasoning signatures survive Anthropic → AG-UI → Anthropic", async () => {
+  const events = await eventport
+    .from(anthropic())
+    .to(adapters.agui())
+    .convert(thinking)
+    .collect();
+  assert.ok(events.some((e) => e.type === "REASONING_MESSAGE_CONTENT"));
+  const output = await eventport
+    .from(adapters.agui())
+    .to(anthropic())
+    .convert(JSON.parse(JSON.stringify(events)))
+    .collect();
+  assert.ok(output.some((e) => e.delta?.signature === "signed"));
+});
+
+test("structured tool results and errors survive AG-UI storage", async () => {
+  for (const result of [
+    {
+      type: "tool-output-available",
+      toolCallId: "call_weather",
+      output: { temperature: 21 },
+    },
+    {
+      type: "tool-output-error",
+      toolCallId: "call_weather",
+      errorText: "Unavailable",
+    },
+  ]) {
+    const input = [
+      ...samples["ai-sdk"].slice(0, -1),
+      result,
+      samples["ai-sdk"].at(-1),
+    ];
+    const events = await eventport
+      .from(aiSDK())
+      .to(adapters.agui())
+      .convert(input)
+      .collect();
+    const output = await eventport
+      .from(adapters.agui())
+      .to(aiSDK())
+      .convert(JSON.parse(JSON.stringify(events)))
+      .collect();
+    const converted = output.find((e) => e.type === result.type);
+    assert.equal(converted.toolCallId, result.toolCallId);
+    assert.deepEqual(
+      converted.output ?? converted.errorText,
+      result.output ?? result.errorText,
+    );
+  }
+});
+
+test("AG-UI native interrupt outcomes emit one approval and preserve cancellation", async () => {
+  const events = structuredClone(samples.agui);
+  events.at(-1).outcome = {
+    type: "interrupt",
+    interrupts: [
+      { id: "approve", reason: "approval", toolCallId: "call_weather" },
+    ],
+  };
+  const output = await eventport
+    .from(adapters.agui())
+    .to(aiSDK())
+    .convert(events)
+    .collect();
+  assert.equal(
+    output.filter((e) => e.type === "tool-approval-request").length,
+    1,
+  );
+  assert.equal(
+    output.find((e) => e.type === "tool-approval-request").approvalId,
+    "approve",
+  );
+  events.at(-1).outcome = { type: "cancelled" };
+  const cancelled = await eventport
+    .from(adapters.agui())
+    .to(aiSDK())
+    .convert(events)
+    .collect();
+  assert.equal(cancelled.at(-1).type, "abort");
+});
+
+test("AG-UI rejects mismatched reasoning content and run identities", async () => {
+  const start = samples.agui[0];
+  for (const events of [
+    [
+      start,
+      { type: "TEXT_MESSAGE_START", messageId: "m" },
+      { type: "REASONING_MESSAGE_CONTENT", messageId: "m", delta: "bad" },
+    ],
+    [start, { ...samples.agui.at(-1), runId: "different-run" }],
+  ]) {
+    await assert.rejects(
+      () =>
+        eventport
+          .from(adapters.agui())
+          .to(adapters.agui())
+          .convert(events)
+          .collect(),
+      /missing block start|identity/,
+    );
+  }
+});

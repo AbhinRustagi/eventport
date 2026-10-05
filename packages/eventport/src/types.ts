@@ -1,45 +1,8 @@
-/** Normalized facts. Conversion never executes tools or resolves approvals. */
-export type CanonicalEvent =
-  | { type: "run.start"; id: string }
-  | { type: "step.start" | "step.end"; id: string }
-  | { type: "run.end"; reason: string }
-  | {
-      type: "block.start";
-      id: string;
-      messageId: string;
-      kind: "text" | "reasoning";
-    }
-  | { type: "block.delta"; id: string; text: string }
-  | {
-      type: "block.metadata";
-      id: string;
-      namespace: string;
-      value: Record<string, unknown>;
-    }
-  | { type: "block.end"; id: string }
-  | { type: "tool.start"; id: string; name: string; messageId: string }
-  | { type: "tool.delta"; id: string; text: string }
-  | { type: "tool.end"; id: string }
-  | { type: "tool.result"; id: string; result: unknown; isError?: boolean }
-  | {
-      type: "usage";
-      input?: number;
-      output?: number;
-      total?: number;
-      details?: unknown;
-    }
-  | { type: "error"; message: string; code?: string }
-  | { type: "state.snapshot"; value: unknown }
-  | { type: "state.patch"; patch: unknown[] }
-  | {
-      type: "interaction.requested";
-      id: string;
-      toolCallId?: string;
-      kind: "approval" | "question";
-      payload: unknown;
-    }
-  | { type: "custom"; name: string; value: unknown }
-  | { type: "opaque"; protocol: string; payload: unknown };
+import type { AGUIEvent } from "@ag-ui/core";
+
+/** AG-UI is the shared protocol between all decoders and encoders. */
+export type CanonicalEvent = AGUIEvent;
+export type { AGUIEvent } from "@ag-ui/core";
 
 export type MaybePromise<T> = T | Promise<T>;
 /** Native SDK unions may include newer event variants; decoders diagnose them at runtime. */

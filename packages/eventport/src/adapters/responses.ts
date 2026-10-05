@@ -1,4 +1,6 @@
-import type { Adapter, CanonicalEvent } from "../types.js";
+import type { EventType } from "@ag-ui/core";
+import { usageEvent, readUsage, finishReason } from "../protocol.js";
+import type { Adapter } from "../types.js";
 import { key, Lifecycle, namedSSE, unsupported } from "../internal.js";
 
 import type {
@@ -80,10 +82,18 @@ export function responses(
             case "response.reasoning_summary_part.done":
             case "response.reasoning_summary_text.delta":
             case "response.reasoning_summary_text.done":
-              return [{ type: "opaque", protocol: "responses", payload: e }];
+              return [
+                { type: "RAW" as EventType.RAW, source: "responses", event: e },
+              ];
             case "response.output_item.done":
               if (e.item.type === "reasoning" && e.item.encrypted_content)
-                return [{ type: "opaque", protocol: "responses", payload: e }];
+                return [
+                  {
+                    type: "RAW" as EventType.RAW,
+                    source: "responses",
+                    event: e,
+                  },
+                ];
               return [];
             case "response.completed":
             case "response.incomplete": {
@@ -91,13 +101,12 @@ export function responses(
               return [
                 ...(u
                   ? [
-                      {
-                        type: "usage" as const,
+                      usageEvent({
                         input: u.input_tokens,
                         output: u.output_tokens,
                         total: u.total_tokens,
                         details: u,
-                      },
+                      }),
                     ]
                   : []),
                 ...life.end(e.response.incomplete_details?.reason ?? "stop"),
@@ -107,7 +116,7 @@ export function responses(
               life.ended = true;
               return [
                 {
-                  type: "error",
+                  type: "RUN_ERROR" as EventType.RUN_ERROR,
                   message: e.response.error?.message ?? "Response failed",
                   code: e.response.error?.code,
                 },
@@ -116,7 +125,7 @@ export function responses(
               life.ended = true;
               return [
                 {
-                  type: "error",
+                  type: "RUN_ERROR" as EventType.RUN_ERROR,
                   message: e.message,
                   code: e.code ?? undefined,
                 },
@@ -171,8 +180,29 @@ export function responses(
         events.map((event) => ({ ...event, sequence_number: sequence++ }));
       return {
         async push(e) {
+          const tokenUsage = readUsage(e);
+          if (tokenUsage) {
+            usage = {
+              input_tokens: tokenUsage.input ?? 0,
+              input_tokens_details: {
+                cached_tokens: 0,
+                cache_write_tokens: 0,
+              },
+              output_tokens_details: { reasoning_tokens: 0 },
+              output_tokens: tokenUsage.output ?? 0,
+              total_tokens:
+                tokenUsage.total ??
+                (tokenUsage.input ?? 0) + (tokenUsage.output ?? 0),
+            };
+            if (e.type !== "RUN_FINISHED") return [];
+          }
+          if (e.type === "RUN_FINISHED" && e.outcome?.type === "interrupt")
+            await context.unsupported(
+              e,
+              "Target cannot represent interrupted runs.",
+            );
           switch (e.type) {
-            case "run.start":
+            case "RUN_STARTED":
               return emit([
                 { type: "response.created", response: snapshot("in_progress") },
                 {
@@ -180,8 +210,9 @@ export function responses(
                   response: snapshot("in_progress"),
                 },
               ]);
-            case "block.start": {
-              if (e.kind === "reasoning") {
+            case "TEXT_MESSAGE_START":
+            case "REASONING_MESSAGE_START": {
+              if (e.type === "REASONING_MESSAGE_START") {
                 await context.unsupported(
                   e,
                   "Responses reasoning summaries cannot represent arbitrary reasoning text.",
@@ -197,7 +228,7 @@ export function responses(
               };
               const index = items.length;
               items.push(item);
-              blocks.set(e.id, { item, index });
+              blocks.set(e.messageId, { item, index });
               const events: Unsequenced<ResponsesEvent>[] = [
                 {
                   type: "response.output_item.added",
@@ -220,26 +251,28 @@ export function responses(
               });
               return emit(events);
             }
-            case "block.delta": {
-              const b = blocks.get(e.id);
+            case "TEXT_MESSAGE_CONTENT":
+            case "REASONING_MESSAGE_CONTENT": {
+              const b = blocks.get(e.messageId);
               if (!b || b.item.type !== "message") return [];
               const part = b.item.content[0];
               if (!part || part.type !== "output_text")
                 throw new Error("Missing output text part.");
-              part.text += e.text;
+              part.text += e.delta;
               return emit([
                 {
                   type: "response.output_text.delta",
                   item_id: b.item.id!,
                   output_index: b.index,
                   content_index: 0,
-                  delta: e.text,
+                  delta: e.delta,
                   logprobs: [],
                 },
               ]);
             }
-            case "block.end": {
-              const b = blocks.get(e.id);
+            case "TEXT_MESSAGE_END":
+            case "REASONING_MESSAGE_END": {
+              const b = blocks.get(e.messageId);
               if (!b || b.item.type !== "message") return [];
               const part = b.item.content[0];
               if (!part || part.type !== "output_text")
@@ -268,18 +301,18 @@ export function responses(
                 },
               ]);
             }
-            case "tool.start": {
+            case "TOOL_CALL_START": {
               const item: ResponseItem = {
                 type: "function_call",
                 id: `fc_${items.length}`,
-                call_id: e.id,
-                name: e.name,
+                call_id: e.toolCallId,
+                name: e.toolCallName,
                 arguments: "",
                 status: "in_progress",
               };
               const index = items.length;
               items.push(item);
-              blocks.set(e.id, { item, index });
+              blocks.set(e.toolCallId, { item, index });
               return emit([
                 {
                   type: "response.output_item.added",
@@ -288,22 +321,22 @@ export function responses(
                 },
               ]);
             }
-            case "tool.delta": {
-              const b = blocks.get(e.id);
+            case "TOOL_CALL_ARGS": {
+              const b = blocks.get(e.toolCallId);
               if (!b || b.item.type !== "function_call")
                 throw new Error("Tool delta without start.");
-              b.item.arguments += e.text;
+              b.item.arguments += e.delta;
               return emit([
                 {
                   type: "response.function_call_arguments.delta",
                   item_id: b.item.id!,
                   output_index: b.index,
-                  delta: e.text,
+                  delta: e.delta,
                 },
               ]);
             }
-            case "tool.end": {
-              const b = blocks.get(e.id);
+            case "TOOL_CALL_END": {
+              const b = blocks.get(e.toolCallId);
               if (!b || b.item.type !== "function_call")
                 throw new Error("Tool end without start.");
               b.item.status = "completed";
@@ -321,24 +354,12 @@ export function responses(
                 },
               ]);
             }
-            case "usage":
-              usage = {
-                input_tokens: e.input ?? 0,
-                input_tokens_details: {
-                  cached_tokens: 0,
-                  cache_write_tokens: 0,
-                },
-                output_tokens_details: { reasoning_tokens: 0 },
-                output_tokens: e.output ?? 0,
-                total_tokens: e.total ?? (e.input ?? 0) + (e.output ?? 0),
-              };
-              return [];
-            case "run.end": {
+            case "RUN_FINISHED": {
               const incomplete = [
                 "length",
                 "max_tokens",
                 "max_output_tokens",
-              ].includes(e.reason);
+              ].includes(finishReason(e));
               const response = snapshot(
                 incomplete ? "incomplete" : "completed",
               );
@@ -353,7 +374,7 @@ export function responses(
                 },
               ]);
             }
-            case "error":
+            case "RUN_ERROR":
               return emit([
                 {
                   type: "response.failed",
@@ -369,7 +390,7 @@ export function responses(
             default:
               await context.unsupported(
                 e,
-                `Responses output cannot represent ${e.type}.`,
+                `Responses output cannot represent ${e.type === "CUSTOM" ? e.name : e.type}.`,
               );
               return [];
           }

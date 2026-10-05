@@ -146,3 +146,14 @@ reusable.middleware({
 eventport.from(responses()).overrides({});
 // @ts-expect-error Responses input must contain native event objects.
 reusable.convert([42]);
+
+// The shared adapter protocol is the bundled upstream AG-UI event union.
+import type { AGUIEvent, CanonicalEvent } from "eventport";
+type Assert<T extends true> = T;
+type SharedProtocol = Assert<
+  AGUIEvent extends CanonicalEvent
+    ? CanonicalEvent extends AGUIEvent
+      ? true
+      : false
+    : false
+>;

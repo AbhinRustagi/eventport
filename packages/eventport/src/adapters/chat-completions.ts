@@ -1,3 +1,4 @@
+import { usageEvent, readUsage, finishReason } from "../protocol.js";
 import type { Adapter, CanonicalEvent } from "../types.js";
 import { Lifecycle, sse, unsupported } from "../internal.js";
 
@@ -28,13 +29,14 @@ export function chatCompletions(
             return unsupported(context, e);
           const out: CanonicalEvent[] = [];
           if (e.usage)
-            out.push({
-              type: "usage",
-              input: e.usage.prompt_tokens,
-              output: e.usage.completion_tokens,
-              total: e.usage.total_tokens,
-              details: e.usage,
-            });
+            out.push(
+              usageEvent({
+                input: e.usage.prompt_tokens,
+                output: e.usage.completion_tokens,
+                total: e.usage.total_tokens,
+                details: e.usage,
+              }),
+            );
           for (const choice of e.choices) {
             if (choice.index !== 0) {
               await context.unsupported(
@@ -118,63 +120,78 @@ export function chatCompletions(
       });
       return {
         async push(e) {
+          const tokenUsage = readUsage(e);
+          if (tokenUsage) {
+            usage = {
+              prompt_tokens: tokenUsage.input ?? 0,
+              completion_tokens: tokenUsage.output ?? 0,
+              total_tokens:
+                tokenUsage.total ??
+                (tokenUsage.input ?? 0) + (tokenUsage.output ?? 0),
+            };
+            if (e.type !== "RUN_FINISHED") return [];
+          }
+          if (e.type === "RUN_FINISHED" && e.outcome?.type === "interrupt")
+            await context.unsupported(
+              e,
+              "Target cannot represent interrupted runs.",
+            );
           switch (e.type) {
-            case "run.start":
-              if (!options.id) id = e.id;
+            case "RUN_STARTED":
+              if (!options.id) id = e.runId;
               return [chunk({ role: "assistant", content: "" })];
-            case "block.start":
-              kinds.set(e.id, e.kind);
-              if (e.kind === "reasoning")
+            case "TEXT_MESSAGE_START":
+            case "REASONING_MESSAGE_START":
+              kinds.set(
+                e.messageId,
+                e.type === "TEXT_MESSAGE_START" ? "text" : "reasoning",
+              );
+              if (e.type === "REASONING_MESSAGE_START")
                 await context.unsupported(
                   e,
                   "Standard Chat Completions has no reasoning block representation.",
                 );
               return [];
-            case "block.delta":
-              return kinds.get(e.id) === "text"
-                ? [chunk({ content: e.text })]
+            case "TEXT_MESSAGE_CONTENT":
+            case "REASONING_MESSAGE_CONTENT":
+              return kinds.get(e.messageId) === "text"
+                ? [chunk({ content: e.delta })]
                 : [];
-            case "block.end":
-              kinds.delete(e.id);
+            case "TEXT_MESSAGE_END":
+            case "REASONING_MESSAGE_END":
+              kinds.delete(e.messageId);
               return [];
-            case "tool.start": {
+            case "TOOL_CALL_START": {
               const index = toolIndexes.size;
-              toolIndexes.set(e.id, index);
+              toolIndexes.set(e.toolCallId, index);
               return [
                 chunk({
                   tool_calls: [
                     {
                       index,
-                      id: e.id,
+                      id: e.toolCallId,
                       type: "function",
-                      function: { name: e.name, arguments: "" },
+                      function: { name: e.toolCallName, arguments: "" },
                     },
                   ],
                 }),
               ];
             }
-            case "tool.delta": {
-              const index = toolIndexes.get(e.id);
+            case "TOOL_CALL_ARGS": {
+              const index = toolIndexes.get(e.toolCallId);
               if (index === undefined)
                 throw new Error("Tool delta without start.");
               return [
                 chunk({
-                  tool_calls: [{ index, function: { arguments: e.text } }],
+                  tool_calls: [{ index, function: { arguments: e.delta } }],
                 }),
               ];
             }
-            case "tool.end":
+            case "TOOL_CALL_END":
               return [];
-            case "usage":
-              usage = {
-                prompt_tokens: e.input ?? 0,
-                completion_tokens: e.output ?? 0,
-                total_tokens: e.total ?? (e.input ?? 0) + (e.output ?? 0),
-              };
-              return [];
-            case "run.end": {
+            case "RUN_FINISHED": {
               const finish =
-                e.reason === "length" || e.reason === "max_tokens"
+                finishReason(e) === "length" || finishReason(e) === "max_tokens"
                   ? "length"
                   : toolIndexes.size
                     ? "tool_calls"
@@ -186,7 +203,7 @@ export function chatCompletions(
             default:
               await context.unsupported(
                 e,
-                `Chat Completions cannot represent ${e.type}.`,
+                `Chat Completions cannot represent ${e.type === "CUSTOM" ? e.name : e.type}.`,
               );
               return [];
           }

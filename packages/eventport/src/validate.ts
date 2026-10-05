@@ -1,85 +1,109 @@
 import type { CanonicalEvent } from "./types.js";
 import { parseArguments } from "./internal.js";
+import { readInteraction, readMetadata, readUsage } from "./protocol.js";
 
-/** Validate relationships, not just the shape of individual events. */
+/** Validate AG-UI relationships without flattening protocol-specific fields. */
 export function eventValidator(): (event: CanonicalEvent) => void {
   let started = false,
     ended = false;
-  const blocks = new Set<string>();
+  let runId: string, threadId: string;
+  const blocks = new Map<string, "text" | "reasoning">();
   const tools = new Map<string, string>();
   const completedTools = new Set<string>();
+  const checkApproval = (kind: string, toolCallId?: string) => {
+    if (kind === "approval" && toolCallId && !completedTools.has(toolCallId))
+      throw new Error("Approval references a tool without completed input.");
+  };
   return (event) => {
     if (ended)
       throw new Error(`Event ${event.type} received after terminal event.`);
-    if (event.type === "error") {
+    if (event.type === "RUN_ERROR") {
       ended = true;
       return;
     }
-    if (event.type === "run.start") {
+    if (event.type === "RUN_STARTED") {
       if (started) throw new Error("Duplicate run start.");
+      if (!event.runId || !event.threadId)
+        throw new Error("Run requires threadId and runId.");
       started = true;
+      runId = event.runId;
+      threadId = event.threadId;
       return;
     }
-    // Usage can precede content (provider-only usage chunks).
-    if (!started && event.type !== "usage")
+    if (!started && !readUsage(event))
       throw new Error(`${event.type} received before run start.`);
+    const metadata = readMetadata(event);
+    if (metadata && !blocks.has(metadata.id))
+      throw new Error("Block metadata without start.");
+    const interaction = readInteraction(event);
+    if (interaction) checkApproval(interaction.kind, interaction.toolCallId);
     switch (event.type) {
-      case "block.start":
-        if (blocks.has(event.id)) throw new Error("Duplicate block start.");
-        blocks.add(event.id);
+      case "TEXT_MESSAGE_START":
+      case "REASONING_MESSAGE_START":
+        if (!event.messageId || blocks.has(event.messageId))
+          throw new Error("Invalid or duplicate block start.");
+        blocks.set(
+          event.messageId,
+          event.type === "TEXT_MESSAGE_START" ? "text" : "reasoning",
+        );
         break;
-      case "block.delta":
-        if (!blocks.has(event.id) || typeof event.text !== "string")
+      case "TEXT_MESSAGE_CONTENT":
+      case "REASONING_MESSAGE_CONTENT":
+        if (
+          blocks.get(event.messageId) !==
+            (event.type === "TEXT_MESSAGE_CONTENT" ? "text" : "reasoning") ||
+          typeof event.delta !== "string"
+        )
           throw new Error("Invalid content delta or missing block start.");
         break;
-      case "block.metadata":
-        if (!blocks.has(event.id))
-          throw new Error("Block metadata without start.");
+      case "TEXT_MESSAGE_END":
+      case "REASONING_MESSAGE_END":
+        if (
+          blocks.get(event.messageId) !==
+            (event.type === "TEXT_MESSAGE_END" ? "text" : "reasoning") ||
+          !blocks.delete(event.messageId)
+        )
+          throw new Error("Block end without start or mismatched kind.");
         break;
-      case "block.end":
-        if (!blocks.delete(event.id))
-          throw new Error("Block end without start.");
-        break;
-      case "tool.start":
-        if (!event.id || !event.name || tools.has(event.id))
+      case "TOOL_CALL_START":
+        if (
+          !event.toolCallId ||
+          !event.toolCallName ||
+          tools.has(event.toolCallId)
+        )
           throw new Error("Invalid or duplicate active tool identity.");
-        tools.set(event.id, "");
-        completedTools.delete(event.id);
+        tools.set(event.toolCallId, "");
+        completedTools.delete(event.toolCallId);
         break;
-      case "tool.delta": {
-        const input = tools.get(event.id);
-        if (input === undefined || typeof event.text !== "string")
+      case "TOOL_CALL_ARGS": {
+        const input = tools.get(event.toolCallId);
+        if (input === undefined || typeof event.delta !== "string")
           throw new Error("Invalid tool delta or missing start.");
-        tools.set(event.id, input + event.text);
+        tools.set(event.toolCallId, input + event.delta);
         break;
       }
-      case "tool.end": {
-        const input = tools.get(event.id);
+      case "TOOL_CALL_END": {
+        const input = tools.get(event.toolCallId);
         if (input === undefined) throw new Error("Tool end without start.");
         parseArguments(input);
-        tools.delete(event.id);
-        completedTools.add(event.id);
+        tools.delete(event.toolCallId);
+        completedTools.add(event.toolCallId);
         break;
       }
-      case "tool.result":
-        if (!completedTools.has(event.id))
+      case "TOOL_CALL_RESULT":
+        if (!completedTools.has(event.toolCallId))
           throw new Error(
             "Tool result has no completed input in this conversion.",
           );
         break;
-      case "interaction.requested":
-        if (
-          event.kind === "approval" &&
-          event.toolCallId &&
-          !completedTools.has(event.toolCallId)
-        )
-          throw new Error(
-            "Approval references a tool without completed input.",
-          );
-        break;
-      case "run.end":
+      case "RUN_FINISHED":
+        if (event.runId !== runId || event.threadId !== threadId)
+          throw new Error("Run completion identity does not match its start.");
         if (blocks.size || tools.size)
           throw new Error("Run ended with open content.");
+        if (event.outcome?.type === "interrupt")
+          for (const i of event.outcome.interrupts)
+            checkApproval(i.reason, i.toolCallId);
         ended = true;
         break;
     }

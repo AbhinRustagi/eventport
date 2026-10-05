@@ -14,6 +14,12 @@ export default {
   input: {
     index: `${output}/index.d.ts`,
     ...Object.fromEntries(
+      ["core", "types", "internal", "protocol", "validate"].map((name) => [
+        name,
+        `${output}/${name}.d.ts`,
+      ]),
+    ),
+    ...Object.fromEntries(
       [
         "openai",
         "chat-completions",

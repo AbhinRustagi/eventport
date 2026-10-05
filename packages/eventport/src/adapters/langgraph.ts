@@ -1,3 +1,5 @@
+import type { EventType } from "@ag-ui/core";
+import { toolResult } from "../protocol.js";
 import type { CanonicalEvent, SourceAdapter } from "../types.js";
 import { Lifecycle, object, unsupported } from "../internal.js";
 
@@ -102,12 +104,7 @@ export function langGraph(
                 return [
                   ...out,
                   ...(life.tools.has(id) ? life.endTool(id) : []),
-                  {
-                    type: "tool.result",
-                    id,
-                    result: message.content,
-                    isError: message.status === "error",
-                  },
+                  toolResult(id, message.content, message.status === "error"),
                 ];
               }
               if (
@@ -199,30 +196,38 @@ export function langGraph(
                   const interrupt = object(item);
                   if (typeof interrupt.id !== "string")
                     throw new Error("LangGraph interrupt requires an id.");
-                  out.push({
-                    type: "interaction.requested",
-                    id: interrupt.id,
-                    kind: "question",
-                    payload: interrupt.value,
-                  });
+                  out.push(
+                    life.interaction({
+                      id: interrupt.id,
+                      kind: "question",
+                      payload: interrupt.value,
+                    }),
+                  );
                 }
               }
               return [
                 ...life.start(),
-                { type: "state.snapshot", value: e.data },
+                {
+                  type: "STATE_SNAPSHOT" as EventType.STATE_SNAPSHOT,
+                  snapshot: e.data,
+                },
                 ...out,
               ];
             }
             case "custom":
               return [
                 ...life.start(),
-                { type: "custom", name: "langgraph", value: e.data },
+                {
+                  type: "CUSTOM" as EventType.CUSTOM,
+                  name: "langgraph",
+                  value: e.data,
+                },
               ];
             case "error":
               life.ended = true;
               return [
                 {
-                  type: "error",
+                  type: "RUN_ERROR" as EventType.RUN_ERROR,
                   message: e.data.message ?? e.data.error ?? "LangGraph error",
                 },
               ];
