@@ -45,6 +45,8 @@ const converted = await eventport
 
 ## Adapters
 
+Adapters translate through AG-UI internally. Provider details use namespaced `CUSTOM` events and metadata; unsupported mappings follow `.onUnsupported()`.
+
 | Import                | Factory                     | Source                        | Destination |
 | --------------------- | --------------------------- | ----------------------------- | ----------- |
 | `eventport/openai`    | `chatCompletions()`         | Chat Completions chunks       | Yes         |

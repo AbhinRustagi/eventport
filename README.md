@@ -26,6 +26,8 @@ Use the same API for live streams and stored event arrays. Return an SSE respons
 
 ## Adapters
 
+Adapters translate through AG-UI internally. Provider details use namespaced `CUSTOM` events and metadata; unsupported mappings follow `.onUnsupported()`.
+
 | Import | Adapters |
 | --- | --- |
 | `eventport/openai` | `chatCompletions()`, `responses()` |

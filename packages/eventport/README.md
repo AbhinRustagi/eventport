@@ -48,6 +48,8 @@ pnpm example
 
 ## Adapters
 
+Adapters translate through AG-UI internally. Provider details use namespaced `CUSTOM` events and metadata; unsupported mappings follow `.onUnsupported()`.
+
 | Import                | Factory                     | Input                             | Output                                          |
 | --------------------- | --------------------------- | --------------------------------- | ----------------------------------------------- |
 | `eventport/openai`    | `chatCompletions()`         | Chat Completions chunks, choice 0 | Chat Completions chunks                         |
@@ -184,3 +186,7 @@ MIT © 2026 AbhinRustagi.
 ## Tests
 
 Run `pnpm test` from the workspace root. Tests run without API keys.
+
+## Custom adapters
+
+Decoders return `AGUIEvent` from `eventport`; encoders receive the same type. `CanonicalEvent` is an alias for this bundled AG-UI union. Usage and streaming interaction requests use `eventport.usage` and `eventport.interaction.requested` custom events. Reasoning signatures use `eventport.block-metadata`; finish reasons and structured tool results live in `metadata.eventport`.
