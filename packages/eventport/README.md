@@ -1,5 +1,9 @@
 # Eventport
 
+[![Core minified size](https://img.shields.io/bundlephobia/min/eventport?label=core%20minified)](https://bundlephobia.com/package/eventport)
+[![Core gzip size](https://img.shields.io/bundlephobia/minzip/eventport?label=core%20gzip)](https://bundlephobia.com/package/eventport)
+[![npm unpacked size](https://img.shields.io/npm/unpacked-size/eventport)](https://www.npmjs.com/package/eventport)
+
 Typed, composable adapters for AI event streams. Independent project. MIT licensed.
 
 ```ts
